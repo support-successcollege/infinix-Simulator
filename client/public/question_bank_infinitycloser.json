@@ -1,0 +1,11 @@
+{
+  "meta": {
+    "version": "2.0.0",
+    "language": "he",
+    "format": "InfinityCloser-compatible",
+    "questionsPerCategory": 0,
+    "scoring": "Use correctIndex to validate answers",
+    "note": "מאגר אופס ומוכן לטעינה מחדש"
+  },
+  "categories": {}
+}
