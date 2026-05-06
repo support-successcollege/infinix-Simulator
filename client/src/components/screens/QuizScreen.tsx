@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useApp } from "@/contexts/AppContext";
-import { ChevronLeft, Clock, AlertTriangle, CheckCircle2, XCircle, MessageSquare, Zap } from "lucide-react";
+import { ChevronLeft, Clock, AlertTriangle, CheckCircle2, XCircle, Zap } from "lucide-react";
 
 export default function QuizScreen() {
   const {
@@ -255,8 +255,7 @@ export default function QuizScreen() {
         {isShowingFeedback && lastAnswer && lastAnswer.selectedIndex !== -1 && (
           <FeedbackBox
             isCorrect={lastAnswer.isCorrect}
-            explanation={currentQuestion.explanation}
-            coach={currentQuestion.coach}
+            selectedAnswer={currentQuestion.options[lastAnswer.selectedIndex] || ""}
             correctAnswer={currentQuestion.options[currentQuestion.correctIndex]}
           />
         )}
@@ -290,10 +289,9 @@ export default function QuizScreen() {
 
 // ── Feedback Box ──────────────────────────────────────────────
 
-function FeedbackBox({ isCorrect, explanation, coach, correctAnswer }: {
+function FeedbackBox({ isCorrect, selectedAnswer, correctAnswer }: {
   isCorrect: boolean;
-  explanation: string;
-  coach?: string;
+  selectedAnswer: string;
   correctAnswer: string;
 }) {
   return (
@@ -322,27 +320,19 @@ function FeedbackBox({ isCorrect, explanation, coach, correctAnswer }: {
 
       {/* Body */}
       <div className="px-4 py-4 flex flex-col gap-3" style={{ background: "var(--tf-surface)" }}>
+        <div className="rounded-lg p-3" style={{ background: "var(--background)", border: "1px solid var(--tf-border)" }}>
+          <p className="text-xs font-semibold mb-1" style={{ color: "var(--muted-foreground)" }}>בחרת:</p>
+          <p className="text-sm font-bold" style={{ color: isCorrect ? "var(--success)" : "var(--destructive)" }}>
+            {selectedAnswer}
+          </p>
+        </div>
+        <div className="rounded-lg p-3" style={{ background: "rgba(34, 197, 94, 0.1)", border: "1px solid rgba(34, 197, 94, 0.2)" }}>
+          <p className="text-xs font-semibold mb-1" style={{ color: "var(--success)" }}>תשובה נכונה:</p>
+          <p className="text-sm font-bold" style={{ color: "var(--foreground)" }}>{correctAnswer}</p>
+        </div>
         {!isCorrect && (
-          <div className="rounded-lg p-3" style={{ background: "rgba(34, 197, 94, 0.1)", border: "1px solid rgba(34, 197, 94, 0.2)" }}>
-            <p className="text-xs font-semibold mb-1" style={{ color: "var(--success)" }}>תשובה מומלצת:</p>
-            <p className="text-sm font-bold" style={{ color: "var(--foreground)" }}>{correctAnswer}</p>
-          </div>
-        )}
-
-        {explanation && (
-          <div>
-            <p className="text-xs font-semibold mb-1" style={{ color: "var(--muted-foreground)" }}>הסבר:</p>
-            <p className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }}>{explanation}</p>
-          </div>
-        )}
-
-        {coach && (
-          <div className="rounded-lg p-3 flex items-start gap-2" style={{ background: "rgba(255, 165, 0, 0.1)", border: "1px solid rgba(255, 165, 0, 0.2)" }}>
-            <MessageSquare size={14} style={{ color: "var(--primary)", flexShrink: 0, marginTop: 2 }} />
-            <div>
-              <p className="text-xs font-semibold mb-1" style={{ color: "var(--primary)" }}>טיפ מהמאמן:</p>
-              <p className="text-sm" style={{ color: "var(--foreground)" }}>{coach}</p>
-            </div>
+          <div className="text-xs font-semibold" style={{ color: "var(--destructive)" }}>
+            נסה שוב בשאלה הבאה.
           </div>
         )}
       </div>
