@@ -100,6 +100,8 @@ export interface QuestionBankData {
   categories?: Record<string, QuestionBankCategory>;
 }
 
+const HEBREW_OPTION_ORDER = ["א", "ב", "ג", "ד", "ה", "ו"];
+
 // ── Demo data ──────────────────────────────────────────────────
 
 const DEMO_ARENAS: Arena[] = [
@@ -143,6 +145,93 @@ function parseQuestionBank(input: unknown): QuestionBankData | null {
   const data = input as QuestionBankData;
   if (!data.categories || typeof data.categories !== "object") return null;
   return data;
+}
+
+function parseLegacyMergedExamSchema(input: unknown): QuestionBankData | null {
+  if (!input || typeof input !== "object") return null;
+  const data = input as {
+    subject?: string;
+    exams?: Array<{
+      id?: string;
+      examPeriod?: string;
+      note?: string;
+      questions?: Array<{
+        number?: number;
+        stem?: string;
+        options?: Record<string, string> | string[];
+        correctAnswer?: string;
+      }>;
+    }>;
+  };
+  if (!Array.isArray(data.exams) || data.exams.length === 0) return null;
+
+  const categories: Record<string, QuestionBankCategory> = {};
+  data.exams.forEach((exam, examIdx) => {
+    const examLabel = String(exam.examPeriod || exam.id || `סט ${examIdx + 1}`);
+    const categoryName = `${String(data.subject || "מבחן")} • ${examLabel}`;
+    const questions = (exam.questions || [])
+      .map((q, qIdx): QuestionBankEntry | null => {
+        const stem = String(q.stem || "").trim();
+        if (!stem) return null;
+
+        const rawOptions = q.options;
+        let options: string[] = [];
+        let orderedKeys: string[] = [];
+
+        if (Array.isArray(rawOptions)) {
+          options = rawOptions.map(o => String(o || "").trim()).filter(Boolean);
+          orderedKeys = options.map((_, i) => String(i));
+        } else if (rawOptions && typeof rawOptions === "object") {
+          const entries = Object.entries(rawOptions as Record<string, string>)
+            .sort((a, b) => {
+              const ai = HEBREW_OPTION_ORDER.indexOf(a[0]);
+              const bi = HEBREW_OPTION_ORDER.indexOf(b[0]);
+              if (ai === -1 && bi === -1) return a[0].localeCompare(b[0], "he");
+              if (ai === -1) return 1;
+              if (bi === -1) return -1;
+              return ai - bi;
+            });
+          orderedKeys = entries.map(([k]) => k);
+          options = entries.map(([, v]) => String(v || "").trim()).filter(Boolean);
+        }
+
+        if (options.length < 2) return null;
+
+        let correctIndex = 0;
+        const answerKey = String(q.correctAnswer || "").trim();
+        if (answerKey) {
+          const byKey = orderedKeys.indexOf(answerKey);
+          correctIndex = byKey >= 0 ? byKey : 0;
+        }
+        correctIndex = Math.max(0, Math.min(options.length - 1, correctIndex));
+
+        const baseId = String(exam.id || `exam-${examIdx + 1}`);
+        const qNumber = Number(q.number) || qIdx + 1;
+        return {
+          id: `${baseId}-${String(qNumber).padStart(3, "0")}`,
+          question: stem,
+          options,
+          correctIndex,
+          difficulty: "medium",
+          status: answerKey ? "active" : "draft",
+          explanation: answerKey
+            ? `התשובה הנכונה לפי מפתח הבחינה: ${answerKey}.`
+            : "אין מפתח תשובות רשמי לשאלה זו בקובץ המקור.",
+          coachNote: exam.note ? `מקור: ${examLabel}. ${exam.note}` : `מקור: ${examLabel}.`,
+        };
+      })
+      .filter((q): q is QuestionBankEntry => q !== null);
+
+    categories[categoryName] = {
+      icon: "📘",
+      product: String(data.subject || "בנק מבחנים"),
+      nextStep: "פתרון מבחן מלא",
+      painPoints: ["דיוק משפטי", "ניהול זמן בבחינה", "בחירה בין תשובות דומות"],
+      questions,
+    };
+  });
+
+  return { categories };
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -403,7 +492,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         try {
           const res = await fetch(url);
           if (!res.ok) continue;
-          const parsed = parseQuestionBank(await res.json());
+          const json = await res.json();
+          const parsed = parseQuestionBank(json) || parseLegacyMergedExamSchema(json);
           if (parsed) {
             if (!cancelled) setQuestionBank(parsed);
             return;
@@ -416,7 +506,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try {
         const raw = localStorage.getItem(QUESTION_BANK_STORAGE_KEY);
         if (!raw) return;
-        const parsed = parseQuestionBank(JSON.parse(raw));
+        const json = JSON.parse(raw);
+        const parsed = parseQuestionBank(json) || parseLegacyMergedExamSchema(json);
         if (parsed && !cancelled) setQuestionBank(parsed);
       } catch (e) {
         console.warn("Failed to load stored question bank", e);
@@ -473,14 +564,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const importQuestionBank = useCallback(async (file: File) => {
     const text = await file.text();
-    const parsed = parseQuestionBank(JSON.parse(text));
+    const json = JSON.parse(text);
+    const parsed = parseQuestionBank(json) || parseLegacyMergedExamSchema(json);
     if (!parsed) throw new Error("מבנה JSON לא תקין");
     setQuestionBank(parsed);
     localStorage.setItem(QUESTION_BANK_STORAGE_KEY, JSON.stringify(parsed));
   }, []);
 
   const replaceQuestionBank = useCallback((data: QuestionBankData) => {
-    const parsed = parseQuestionBank(data);
+    const parsed = parseQuestionBank(data) || parseLegacyMergedExamSchema(data);
     if (!parsed) throw new Error("מבנה JSON לא תקין");
     setQuestionBank(parsed);
     localStorage.setItem(QUESTION_BANK_STORAGE_KEY, JSON.stringify(parsed));
