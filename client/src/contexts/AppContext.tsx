@@ -214,10 +214,8 @@ function parseLegacyMergedExamSchema(input: unknown): QuestionBankData | null {
           correctIndex,
           difficulty: "medium",
           status: answerKey ? "active" : "draft",
-          explanation: answerKey
-            ? `התשובה הנכונה לפי מפתח הבחינה: ${answerKey}.`
-            : "אין מפתח תשובות רשמי לשאלה זו בקובץ המקור.",
-          coachNote: exam.note ? `מקור: ${examLabel}. ${exam.note}` : `מקור: ${examLabel}.`,
+          explanation: "",
+          coachNote: "",
         };
       })
       .filter((q): q is QuestionBankEntry => q !== null);
