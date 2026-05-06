@@ -600,7 +600,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             text: String(q.question || ""),
             options,
             correctIndex: Number.isInteger(correct) && correct >= 0 && correct < options.length ? correct : 0,
-            explanation: String(q.explanation || "התשובה הנכונה מקדמת את השיחה לשלב הבא."),
+            explanation: String(q.explanation || ""),
             coach: q.coachNote ? String(q.coachNote) : undefined,
             arena: arenaName,
             difficulty: normalizeDifficulty(q.difficulty),

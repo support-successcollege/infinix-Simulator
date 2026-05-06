@@ -329,10 +329,12 @@ function FeedbackBox({ isCorrect, explanation, coach, correctAnswer }: {
           </div>
         )}
 
-        <div>
-          <p className="text-xs font-semibold mb-1" style={{ color: "var(--muted-foreground)" }}>הסבר:</p>
-          <p className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }}>{explanation}</p>
-        </div>
+        {explanation && (
+          <div>
+            <p className="text-xs font-semibold mb-1" style={{ color: "var(--muted-foreground)" }}>הסבר:</p>
+            <p className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }}>{explanation}</p>
+          </div>
+        )}
 
         {coach && (
           <div className="rounded-lg p-3 flex items-start gap-2" style={{ background: "rgba(255, 165, 0, 0.1)", border: "1px solid rgba(255, 165, 0, 0.2)" }}>
