@@ -14,6 +14,9 @@
   - `pnpm build:pages`
   - `pnpm preview:pages`
 - `vite.config.ts` תומך ב־`VITE_BASE_PATH`.
+- נוסף workflow לפריסה אוטומטית:
+  - `.github/workflows/deploy-pages.yml`
+  - רץ על כל push ל־`main`.
 
 ## איך לבנות ל־GitHub Pages
 
