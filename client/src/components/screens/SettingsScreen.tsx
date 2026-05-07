@@ -33,7 +33,7 @@ export default function SettingsScreen() {
 
   const saveSettings = () => {
     const safeGoal = Math.max(1, Math.min(20, Number(weeklyGoal) || 5));
-    updateUserProfile({ name: name.trim() || user?.name || "נציג מכירות", weeklyGoal: safeGoal });
+    updateUserProfile({ name: name.trim() || user?.name || "סטודנט", weeklyGoal: safeGoal });
     setTrainingConfig({ mode, questionCount, timePerQuestion });
     toast.success("ההגדרות נשמרו בהצלחה");
   };

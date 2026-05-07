@@ -4,18 +4,6 @@ import { Users, BarChart2, BookOpen, TrendingUp, Award, Clock, Search, Shield, U
 import { toast } from "sonner";
 
 type Tab = "team" | "reports" | "content";
-type MemberStatus = "active" | "warning" | "danger";
-
-interface TeamMember {
-  id: string;
-  name: string;
-  email: string;
-  role: "trainee" | "manager";
-  status: MemberStatus;
-  sessions: number;
-  avgScore: number;
-  lastActive: string;
-}
 
 export default function ManagerScreen() {
   const {
@@ -28,16 +16,18 @@ export default function ManagerScreen() {
     replaceQuestionBank,
     deleteQuestionBankCategory,
     resetQuestionBankContent,
+    authUsers,
+    createAuthUser,
+    updateAuthUserRole,
+    deleteAuthUser,
   } = useApp();
   const [activeTab, setActiveTab] = useState<Tab>("team");
   const [search, setSearch] = useState("");
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<"trainee" | "manager">("trainee");
   const importInputRef = useRef<HTMLInputElement | null>(null);
-
-  const persistTeam = (next: TeamMember[]) => setTeamMembers(next);
 
   if (user?.role !== "manager") {
     return (
@@ -53,73 +43,41 @@ export default function ManagerScreen() {
     );
   }
 
-  useEffect(() => {
-    if (!user) return;
-    setTeamMembers([
-      {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: "manager",
-        status: "active",
-        sessions: sessions.length,
-        avgScore: sessions.length ? Math.round(sessions.reduce((s, x) => s + x.score, 0) / sessions.length) : 0,
-        lastActive: "היום",
-      },
-    ]);
-  }, [user, sessions]);
-
-  const filteredMembers = teamMembers.filter(m =>
+  const filteredMembers = authUsers.filter(m =>
     m.name.toLowerCase().includes(search.toLowerCase()) || m.email.toLowerCase().includes(search.toLowerCase())
   );
 
   const stats = useMemo(() => {
-    const totalMembers = teamMembers.length;
-    const activeThisWeek = teamMembers.filter(m => m.status === "active").length;
-    const avgTeamScore = totalMembers > 0 ? Math.round(teamMembers.reduce((s, m) => s + m.avgScore, 0) / totalMembers) : 0;
-    const totalSessions = teamMembers.reduce((s, m) => s + m.sessions, 0);
+    const totalMembers = authUsers.length;
+    const activeThisWeek = authUsers.length;
+    const avgTeamScore = sessions.length > 0 ? Math.round(sessions.reduce((s, x) => s + x.score, 0) / sessions.length) : 0;
+    const totalSessions = sessions.length;
     return { totalMembers, activeThisWeek, avgTeamScore, totalSessions };
-  }, [teamMembers]);
+  }, [authUsers, sessions]);
 
   const addMember = () => {
     const name = newName.trim();
     const email = newEmail.trim().toLowerCase();
-    if (!name || !email) {
-      toast.error("נא להזין שם ומייל");
+    if (!name || !email || !newPassword) {
+      toast.error("נא להזין שם, מייל וסיסמה");
       return;
     }
-    const next: TeamMember[] = [
-      {
-        id: `tm-${Date.now()}`,
-        name,
-        email,
-        role: newRole,
-        status: "active",
-        sessions: 0,
-        avgScore: 0,
-        lastActive: "היום",
-      },
-      ...teamMembers,
-    ];
-    persistTeam(next);
-    setNewName("");
-    setNewEmail("");
-    setNewRole("trainee");
-    toast.success("חבר צוות נוסף בהצלחה");
-  };
-
-  const updateMemberStatus = (id: string, status: MemberStatus) => {
-    persistTeam(teamMembers.map(m => (m.id === id ? { ...m, status } : m)));
-  };
-
-  const removeMember = (id: string) => {
-    persistTeam(teamMembers.filter(m => m.id !== id));
+    try {
+      createAuthUser({ name, email, password: newPassword, role: newRole });
+      setNewName("");
+      setNewEmail("");
+      setNewPassword("");
+      setNewRole("trainee");
+      toast.success("משתמש נוסף בהצלחה");
+    } catch (err) {
+      toast.error((err as Error)?.message || "יצירת המשתמש נכשלה");
+    }
   };
 
   const exportReportCsv = () => {
     const rows = [
       "member_name,email,role,status,sessions,avg_score,last_active",
-      ...teamMembers.map(m => `${m.name},${m.email},${m.role},${m.status},${m.sessions},${m.avgScore},${m.lastActive}`),
+      ...authUsers.map(m => `${m.name},${m.email},${m.role},active,0,0,`),
       "",
       "session_id,arena,mode,score,start_time,end_time",
       ...sessions.map(s => `${s.id},${s.arenaName},${s.mode},${s.score},${new Date(s.startTime).toISOString()},${s.endTime ? new Date(s.endTime).toISOString() : ""}`),
@@ -199,14 +157,15 @@ export default function ManagerScreen() {
               ))}
             </div>
 
-            <div className="rounded-xl p-3 grid grid-cols-1 md:grid-cols-4 gap-2" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
+            <div className="rounded-xl p-3 grid grid-cols-1 md:grid-cols-5 gap-2" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
               <input className="tf-input" placeholder="שם מלא" value={newName} onChange={e => setNewName(e.target.value)} />
               <input className="tf-input" placeholder="מייל" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
+              <input className="tf-input" placeholder="סיסמה" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
               <select className="tf-input" value={newRole} onChange={e => setNewRole(e.target.value as "trainee" | "manager")}>
-                <option value="trainee">נציג</option>
+                <option value="trainee">סטודנט</option>
                 <option value="manager">מנהל</option>
               </select>
-              <button onClick={addMember} className="rounded-xl px-3 py-2 font-semibold text-sm" style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}>הוסף חבר צוות</button>
+              <button onClick={addMember} className="rounded-xl px-3 py-2 font-semibold text-sm" style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}>הוסף משתמש</button>
             </div>
 
             <div className="relative">
@@ -220,14 +179,35 @@ export default function ManagerScreen() {
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm" style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}>{m.name.charAt(0)}</div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-bold" style={{ color: "var(--foreground)" }}>{m.name}</div>
-                    <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>{m.email} • {m.role === "manager" ? "מנהל" : "נציג"}</div>
+                    <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>{m.email} • {m.role === "manager" ? "מנהל" : "סטודנט"}</div>
                   </div>
-                  <select className="tf-input !w-auto text-xs" value={m.status} onChange={e => updateMemberStatus(m.id, e.target.value as MemberStatus)}>
-                    <option value="active">פעיל</option>
-                    <option value="warning">במעקב</option>
-                    <option value="danger">מוקפא</option>
+                  <select
+                    className="tf-input !w-auto text-xs"
+                    value={m.role}
+                    onChange={e => {
+                      try {
+                        updateAuthUserRole(m.id, e.target.value as "trainee" | "manager");
+                        toast.success("תפקיד עודכן");
+                      } catch (err) {
+                        toast.error((err as Error)?.message || "עדכון תפקיד נכשל");
+                      }
+                    }}
+                  >
+                    <option value="trainee">סטודנט</option>
+                    <option value="manager">מנהל</option>
                   </select>
-                  <button onClick={() => removeMember(m.id)} className="p-2 rounded-lg" style={{ background: "rgba(220, 38, 38, 0.12)", color: "var(--destructive)" }}>
+                  <button
+                    onClick={() => {
+                      try {
+                        deleteAuthUser(m.id);
+                        toast.success("משתמש נמחק");
+                      } catch (err) {
+                        toast.error((err as Error)?.message || "מחיקת המשתמש נכשלה");
+                      }
+                    }}
+                    className="p-2 rounded-lg"
+                    style={{ background: "rgba(220, 38, 38, 0.12)", color: "var(--destructive)" }}
+                  >
                     <Trash2 size={14} />
                   </button>
                 </div>

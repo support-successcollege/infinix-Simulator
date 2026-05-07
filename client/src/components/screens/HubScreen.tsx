@@ -66,7 +66,7 @@ export default function HubScreen() {
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm font-medium mb-1" style={{ color: "var(--primary)" }}>
-                שלום, {user?.name?.split(" ")[0] ?? "נציג"} 👋
+                שלום, {user?.name?.split(" ")[0] ?? "סטודנט"} 👋
               </p>
               <h1 className="text-3xl font-black text-white mb-2" style={{ fontFamily: "Heebo, sans-serif" }}>
                 מוכן לאמן?

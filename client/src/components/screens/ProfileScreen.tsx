@@ -77,7 +77,7 @@ export default function ProfileScreen() {
                   border: `1px solid ${user.role === "manager" ? "rgba(183, 146, 79, 0.3)" : "rgba(255, 165, 0, 0.3)"}`,
                 }}
               >
-                {user.role === "manager" ? "מנהל" : "נציג מכירות"}
+                {user.role === "manager" ? "מנהל" : "סטודנט"}
               </span>
               <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
                 <Calendar size={10} className="inline ml-1" />

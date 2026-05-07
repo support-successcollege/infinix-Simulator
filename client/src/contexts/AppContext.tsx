@@ -100,6 +100,14 @@ export interface QuestionBankData {
   categories?: Record<string, QuestionBankCategory>;
 }
 
+interface AuthUserAccount {
+  id: string;
+  name: string;
+  email: string;
+  password: string;
+  role: "trainee" | "manager";
+}
+
 const HEBREW_OPTION_ORDER = ["א", "ב", "ג", "ד", "ה", "ו"];
 
 // ── Demo data ──────────────────────────────────────────────────
@@ -120,8 +128,21 @@ const DEMO_ARENAS: Arena[] = [
 ];
 
 const QUESTION_BANK_STORAGE_KEY = "ic_question_bank_v1";
+const AUTH_USERS_STORAGE_KEY = "ic_auth_users_v1";
 const ADMIN_EMAIL = "support@successcollege.co.il";
 const ADMIN_PASSWORD = "123456";
+
+function getDefaultAuthUsers(): AuthUserAccount[] {
+  return [
+    {
+      id: "u-admin",
+      name: "Support Admin",
+      email: ADMIN_EMAIL,
+      password: ADMIN_PASSWORD,
+      role: "manager",
+    },
+  ];
+}
 
 function normalizeDifficulty(v?: string): Question["difficulty"] {
   if (!v) return undefined;
@@ -401,6 +422,10 @@ interface AppContextValue {
   login: (email: string, password: string, name?: string) => boolean;
   logout: () => void;
   updateUserProfile: (patch: Partial<Pick<User, "name" | "weeklyGoal" | "weeklyProgress">>) => void;
+  authUsers: Array<Pick<AuthUserAccount, "id" | "name" | "email" | "role">>;
+  createAuthUser: (payload: { name: string; email: string; password: string; role: "trainee" | "manager" }) => void;
+  updateAuthUserRole: (userId: string, role: "trainee" | "manager") => void;
+  deleteAuthUser: (userId: string) => void;
 
   // Navigation
   currentScreen: Screen;
@@ -443,6 +468,26 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const [authUsers, setAuthUsers] = useState<AuthUserAccount[]>(() => {
+    try {
+      const raw = localStorage.getItem(AUTH_USERS_STORAGE_KEY);
+      if (!raw) return getDefaultAuthUsers();
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed) || parsed.length === 0) return getDefaultAuthUsers();
+      const normalized = parsed
+        .map((u: Partial<AuthUserAccount>) => ({
+          id: String(u.id || `u-${Date.now()}`),
+          name: String(u.name || "").trim(),
+          email: String(u.email || "").trim().toLowerCase(),
+          password: String(u.password || ""),
+          role: u.role === "manager" ? "manager" : "trainee",
+        }))
+        .filter(u => u.name && u.email && u.password);
+      return normalized.length > 0 ? normalized : getDefaultAuthUsers();
+    } catch {
+      return getDefaultAuthUsers();
+    }
+  });
   const [user, setUser] = useState<User | null>(null);
   const [currentScreen, setCurrentScreen] = useState<Screen>("hub");
   const [theme] = useState<"dark" | "light">("dark"); // Managed by ThemeContext
@@ -471,6 +516,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       "question_bank_infinitycloser.json",
     ];
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem(AUTH_USERS_STORAGE_KEY, JSON.stringify(authUsers));
+  }, [authUsers]);
 
   const arenas = useMemo<Arena[]>(() => {
     const cats = questionBank?.categories;
@@ -531,15 +580,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback((email: string, password: string, name?: string) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();
-    const isBuiltInAdmin = normalizedEmail === ADMIN_EMAIL && password === ADMIN_PASSWORD;
-    if (!isBuiltInAdmin) return false;
-    const isManager = true;
-    try { localStorage.removeItem("ic_manager_team_v1"); } catch { /* ignore */ }
+    const account = authUsers.find(a => a.email === normalizedEmail && a.password === password);
+    if (!account) return false;
     setUser({
-      id: "u1",
-      name: name || (isBuiltInAdmin ? "Support Admin" : (isManager ? "מנהל מכירות" : "נציג מכירות")),
+      id: account.id,
+      name: name || account.name,
       email: normalizedEmail,
-      role: isManager ? "manager" : "trainee",
+      role: account.role,
       joinDate: new Date(Date.now() - 86400000 * 90),
       totalSessions: 23,
       avgScore: 78,
@@ -549,7 +596,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSessions([]);
     setCurrentScreen("hub");
     return true;
-  }, []);
+  }, [authUsers]);
 
   const logout = useCallback(() => {
     setUser(null);
@@ -562,6 +609,51 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return { ...prev, ...patch };
     });
   }, []);
+
+  const createAuthUser = useCallback((payload: { name: string; email: string; password: string; role: "trainee" | "manager" }) => {
+    const name = String(payload.name || "").trim();
+    const email = String(payload.email || "").trim().toLowerCase();
+    const password = String(payload.password || "");
+    if (!name || !email || !password) throw new Error("יש למלא שם, מייל וסיסמה");
+    setAuthUsers(prev => {
+      if (prev.some(u => u.email === email)) throw new Error("קיים כבר משתמש עם המייל הזה");
+      return [
+        ...prev,
+        {
+          id: `u-${Date.now()}`,
+          name,
+          email,
+          password,
+          role: payload.role,
+        },
+      ];
+    });
+  }, []);
+
+  const updateAuthUserRole = useCallback((userId: string, role: "trainee" | "manager") => {
+    setAuthUsers(prev => {
+      const current = prev.find(u => u.id === userId);
+      if (!current) return prev;
+      if (current.role === "manager" && role !== "manager") {
+        const managerCount = prev.filter(u => u.role === "manager").length;
+        if (managerCount <= 1) throw new Error("חייב להישאר לפחות משתמש הנהלה אחד");
+      }
+      return prev.map(u => (u.id === userId ? { ...u, role } : u));
+    });
+  }, []);
+
+  const deleteAuthUser = useCallback((userId: string) => {
+    setAuthUsers(prev => {
+      const target = prev.find(u => u.id === userId);
+      if (!target) return prev;
+      if (target.role === "manager") {
+        const managerCount = prev.filter(u => u.role === "manager").length;
+        if (managerCount <= 1) throw new Error("לא ניתן למחוק את משתמש ההנהלה האחרון");
+      }
+      if (user?.id === userId) throw new Error("לא ניתן למחוק את המשתמש שמחובר כרגע");
+      return prev.filter(u => u.id !== userId);
+    });
+  }, [user?.id]);
 
   const setTrainingConfig = useCallback((config: Partial<TrainingConfig>) => {
     setTrainingConfigState(prev => ({ ...prev, ...config }));
@@ -777,6 +869,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       login,
       logout,
       updateUserProfile,
+      authUsers: authUsers.map(({ id, name, email, role }) => ({ id, name, email, role })),
+      createAuthUser,
+      updateAuthUserRole,
+      deleteAuthUser,
       currentScreen,
       setScreen,
       trainingConfig,

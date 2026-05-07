@@ -28,7 +28,7 @@ export default function AuthScreen() {
     const ok = login(email, password);
     if (!ok) {
       setIsLoading(false);
-      toast.error("גישה מותרת רק למשתמש המנהל שהוגדר במערכת");
+      toast.error("מייל או סיסמה שגויים");
       return;
     }
     setIsLoading(false);
@@ -94,7 +94,7 @@ export default function AuthScreen() {
             ברוך הבא
           </h2>
           <p style={{ color: "var(--muted-foreground)" }}>
-            התחבר כמשתמש המנהל של המערכת
+            התחבר עם המשתמש שהוגדר עבורך
           </p>
         </div>
 
@@ -148,7 +148,7 @@ export default function AuthScreen() {
         </form>
 
         <p className="text-center text-xs mt-6" style={{ color: "var(--muted-foreground)" }}>
-          גישה למערכת מתבצעת באמצעות חשבון מנהל יחיד
+          ההתחברות מתבצעת באמצעות משתמשים שנוצרו במערכת
         </p>
       </div>
     </div>
