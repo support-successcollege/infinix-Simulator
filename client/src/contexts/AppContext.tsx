@@ -165,10 +165,8 @@ function parseLegacyMergedExamSchema(input: unknown): QuestionBankData | null {
   };
   if (!Array.isArray(data.exams) || data.exams.length === 0) return null;
 
-  const categories: Record<string, QuestionBankCategory> = {};
+  const mergedQuestions: QuestionBankEntry[] = [];
   data.exams.forEach((exam, examIdx) => {
-    const examLabel = String(exam.examPeriod || exam.id || `סט ${examIdx + 1}`);
-    const categoryName = `${String(data.subject || "מבחן")} • ${examLabel}`;
     const questions = (exam.questions || [])
       .map((q, qIdx): QuestionBankEntry | null => {
         const stem = String(q.stem || "").trim();
@@ -219,15 +217,18 @@ function parseLegacyMergedExamSchema(input: unknown): QuestionBankData | null {
         };
       })
       .filter((q): q is QuestionBankEntry => q !== null);
+    mergedQuestions.push(...questions);
+  });
 
-    categories[categoryName] = {
+  const categories: Record<string, QuestionBankCategory> = {
+    אתיקה: {
       icon: "📘",
       product: String(data.subject || "בנק מבחנים"),
       nextStep: "פתרון מבחן מלא",
       painPoints: ["דיוק משפטי", "ניהול זמן בבחינה", "בחירה בין תשובות דומות"],
-      questions,
-    };
-  });
+      questions: mergedQuestions,
+    },
+  };
 
   return { categories };
 }
@@ -414,8 +415,11 @@ interface AppContextValue {
   questionBankLoaded: boolean;
   questionBankData: QuestionBankData | null;
   importQuestionBank: (file: File) => Promise<void>;
+  importQuestionBankCategories: (file: File) => Promise<void>;
   clearImportedQuestionBank: () => void;
   replaceQuestionBank: (data: QuestionBankData) => void;
+  deleteQuestionBankCategory: (categoryName: string) => void;
+  resetQuestionBankContent: () => Promise<void>;
 
   // Quiz
   currentSession: QuizSession | null;
@@ -458,6 +462,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [lastAnswer, setLastAnswer] = useState<QuizAnswer | null>(null);
   const [isShowingFeedback, setIsShowingFeedback] = useState(false);
 
+  const getQuestionBankEndpoints = useCallback(() => {
+    const baseUrl = import.meta.env.BASE_URL || "/";
+    const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+    return [
+      "/api/question-bank",
+      `${normalizedBase}question_bank_infinitycloser.json`,
+      "question_bank_infinitycloser.json",
+    ];
+  }, []);
+
   const arenas = useMemo<Arena[]>(() => {
     const cats = questionBank?.categories;
     if (!cats) return DEMO_ARENAS;
@@ -479,14 +493,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     const loadBank = async () => {
-      const baseUrl = import.meta.env.BASE_URL || "/";
-      const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-      const endpoints = [
-        "/api/question-bank",
-        `${normalizedBase}question_bank_infinitycloser.json`,
-        "question_bank_infinitycloser.json",
-      ];
-      for (const url of endpoints) {
+      try {
+        const raw = localStorage.getItem(QUESTION_BANK_STORAGE_KEY);
+        if (raw) {
+          const json = JSON.parse(raw);
+          const parsed = parseQuestionBank(json) || parseLegacyMergedExamSchema(json);
+          if (parsed && !cancelled) {
+            setQuestionBank(parsed);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to load stored question bank", e);
+      }
+
+      for (const url of getQuestionBankEndpoints()) {
         try {
           const res = await fetch(url);
           if (!res.ok) continue;
@@ -500,23 +521,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           // Try next source
         }
       }
-
-      try {
-        const raw = localStorage.getItem(QUESTION_BANK_STORAGE_KEY);
-        if (!raw) return;
-        const json = JSON.parse(raw);
-        const parsed = parseQuestionBank(json) || parseLegacyMergedExamSchema(json);
-        if (parsed && !cancelled) setQuestionBank(parsed);
-      } catch (e) {
-        console.warn("Failed to load stored question bank", e);
-      }
     };
 
     loadBank();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [getQuestionBankEndpoints]);
 
   const login = useCallback((email: string, password: string, name?: string) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();
@@ -569,6 +580,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(QUESTION_BANK_STORAGE_KEY, JSON.stringify(parsed));
   }, []);
 
+  const importQuestionBankCategories = useCallback(async (file: File) => {
+    const text = await file.text();
+    const json = JSON.parse(text);
+    const parsed = parseQuestionBank(json) || parseLegacyMergedExamSchema(json);
+    if (!parsed?.categories || Object.keys(parsed.categories).length === 0) {
+      throw new Error("לא נמצאו קטגוריות תקינות בקובץ");
+    }
+    setQuestionBank(prev => {
+      const next: QuestionBankData = {
+        categories: {
+          ...(prev?.categories || {}),
+          ...parsed.categories,
+        },
+      };
+      localStorage.setItem(QUESTION_BANK_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
   const replaceQuestionBank = useCallback((data: QuestionBankData) => {
     const parsed = parseQuestionBank(data) || parseLegacyMergedExamSchema(data);
     if (!parsed) throw new Error("מבנה JSON לא תקין");
@@ -580,6 +610,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(QUESTION_BANK_STORAGE_KEY);
     setQuestionBank(null);
   }, []);
+
+  const deleteQuestionBankCategory = useCallback((categoryName: string) => {
+    if (!categoryName) return;
+    setQuestionBank(prev => {
+      const current = prev?.categories || {};
+      if (!current[categoryName]) return prev;
+      const nextCategories = { ...current };
+      delete nextCategories[categoryName];
+      const next: QuestionBankData = { categories: nextCategories };
+      localStorage.setItem(QUESTION_BANK_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const resetQuestionBankContent = useCallback(async () => {
+    localStorage.removeItem(QUESTION_BANK_STORAGE_KEY);
+    for (const url of getQuestionBankEndpoints()) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const json = await res.json();
+        const parsed = parseQuestionBank(json) || parseLegacyMergedExamSchema(json);
+        if (parsed) {
+          setQuestionBank(parsed);
+          return;
+        }
+      } catch {
+        // Try next source
+      }
+    }
+    setQuestionBank(null);
+  }, [getQuestionBankEndpoints]);
 
   const startQuiz = useCallback(() => {
     const arena = arenas.find(a => a.id === trainingConfig.arenaId);
@@ -723,8 +785,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       questionBankLoaded: !!questionBank,
       questionBankData: questionBank,
       importQuestionBank,
+      importQuestionBankCategories,
       clearImportedQuestionBank,
       replaceQuestionBank,
+      deleteQuestionBankCategory,
+      resetQuestionBankContent,
       currentSession,
       startQuiz,
       submitAnswer,

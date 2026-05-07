@@ -18,7 +18,17 @@ interface TeamMember {
 }
 
 export default function ManagerScreen() {
-  const { user, sessions, importQuestionBank, questionBankLoaded, questionBankData, replaceQuestionBank } = useApp();
+  const {
+    user,
+    sessions,
+    importQuestionBank,
+    importQuestionBankCategories,
+    questionBankLoaded,
+    questionBankData,
+    replaceQuestionBank,
+    deleteQuestionBankCategory,
+    resetQuestionBankContent,
+  } = useApp();
   const [activeTab, setActiveTab] = useState<Tab>("team");
   const [search, setSearch] = useState("");
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -247,6 +257,9 @@ export default function ManagerScreen() {
             questionBankLoaded={questionBankLoaded}
             questionBankData={questionBankData}
             replaceQuestionBank={replaceQuestionBank}
+            importQuestionBankCategories={importQuestionBankCategories}
+            deleteQuestionBankCategory={deleteQuestionBankCategory}
+            resetQuestionBankContent={resetQuestionBankContent}
             importInputRef={importInputRef}
             onImportJson={handleImportJson}
           />
@@ -260,12 +273,18 @@ function ContentTab({
   questionBankLoaded,
   questionBankData,
   replaceQuestionBank,
+  importQuestionBankCategories,
+  deleteQuestionBankCategory,
+  resetQuestionBankContent,
   importInputRef,
   onImportJson,
 }: {
   questionBankLoaded: boolean;
   questionBankData: QuestionBankData | null;
   replaceQuestionBank: (data: QuestionBankData) => void;
+  importQuestionBankCategories: (file: File) => Promise<void>;
+  deleteQuestionBankCategory: (categoryName: string) => void;
+  resetQuestionBankContent: () => Promise<void>;
   importInputRef: RefObject<HTMLInputElement | null>;
   onImportJson: ChangeEventHandler<HTMLInputElement>;
 }) {
@@ -276,6 +295,7 @@ function ContentTab({
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number>(0);
   const [draft, setDraft] = useState<QuestionBankEntry | null>(null);
+  const categoryImportInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!categoryNames.length) {
@@ -375,9 +395,40 @@ function ContentTab({
     toast.success("קובץ JSON מעודכן יוצא");
   };
 
+  const handleCategoryImport: ChangeEventHandler<HTMLInputElement> = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    try {
+      await importQuestionBankCategories(f);
+      toast.success("הקטגוריות נוספו ונשמרו קבוע");
+    } catch (err) {
+      toast.error(`ייבוא קטגוריה נכשל: ${(err as Error)?.message || "שגיאה לא ידועה"}`);
+    } finally {
+      e.target.value = "";
+    }
+  };
+
+  const handleDeleteCategory = () => {
+    if (!selectedCategory) return;
+    const ok = window.confirm(`למחוק את הקטגוריה "${selectedCategory}"?`);
+    if (!ok) return;
+    deleteQuestionBankCategory(selectedCategory);
+    setSelectedQuestionIndex(0);
+    toast.success("הקטגוריה נמחקה");
+  };
+
+  const handleResetAll = async () => {
+    const ok = window.confirm("לאפס את כל תוכן המאגר? הפעולה תסיר שינויים שנשמרו מקומית.");
+    if (!ok) return;
+    await resetQuestionBankContent();
+    setSelectedQuestionIndex(0);
+    toast.success("תוכן המאגר אופס");
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <input ref={importInputRef} type="file" accept=".json,application/json" className="hidden" onChange={onImportJson} />
+      <input ref={categoryImportInputRef} type="file" accept=".json,application/json" className="hidden" onChange={handleCategoryImport} />
 
       <div className="rounded-xl p-4" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -400,6 +451,14 @@ function ContentTab({
               </select>
               <div className="text-xs font-bold mb-2" style={{ color: "var(--muted-foreground)" }}>
                 שאלות ({selectedQuestions.length})
+              </div>
+              <div className="flex gap-1 mb-2">
+                <button onClick={handleDeleteCategory} className="px-2 py-1 rounded-lg text-[11px] font-bold" style={{ background: "rgba(220, 38, 38, 0.12)", color: "var(--destructive)" }}>
+                  מחק קטגוריה
+                </button>
+                <button onClick={handleResetAll} className="px-2 py-1 rounded-lg text-[11px] font-bold" style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}>
+                  איפוס מלא
+                </button>
               </div>
               <div className="flex flex-col gap-1">
                 {selectedQuestions.map((q, idx) => (
@@ -488,6 +547,14 @@ function ContentTab({
         </button>
         <button onClick={exportJson} className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}>
           <Download size={15} /> ייצוא JSON מעודכן
+        </button>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <button onClick={() => categoryImportInputRef.current?.click()} className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{ background: "#b7924f", color: "#000" }}>
+          <Upload size={15} /> ייבוא קטגוריה ושמירה קבועה
+        </button>
+        <button onClick={handleResetAll} className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{ background: "rgba(220, 38, 38, 0.12)", color: "var(--destructive)", border: "1px solid rgba(220, 38, 38, 0.3)" }}>
+          <Trash2 size={15} /> מחיקה ואיפוס תוכן
         </button>
       </div>
     </div>
