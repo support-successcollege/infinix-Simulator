@@ -12,32 +12,32 @@ export default function ProfileScreen() {
   if (!user) return null;
 
   const avgScore = sessions.length > 0
-    ? Math.round(sessions.reduce((s, sess) => s + sess.score, 0) / sessions.length)
+    ? Math.round(sessions.reduce((s, sess) => s + sess.scorePct, 0) / sessions.length)
     : 0;
 
   const bestScore = sessions.length > 0
-    ? Math.max(...sessions.map(s => s.score))
+    ? Math.max(...sessions.map(s => s.scorePct))
     : 0;
 
-  const totalCorrect = sessions.reduce((sum, s) => sum + s.answers.filter(a => a.isCorrect).length, 0);
+  const totalCorrect = sessions.reduce((sum, s) => sum + s.answers.filter(a => a.outcome === "correct").length, 0);
   const totalAnswered = sessions.reduce((sum, s) => sum + s.answers.length, 0);
   const accuracy = totalAnswered > 0 ? Math.round((totalCorrect / totalAnswered) * 100) : 0;
 
   // Score distribution for mini bar chart
   const scoreRanges = [
-    { label: "90-100", count: sessions.filter(s => s.score >= 90).length, color: "var(--success)" },
-    { label: "75-89", count: sessions.filter(s => s.score >= 75 && s.score < 90).length, color: "var(--primary)" },
-    { label: "60-74", count: sessions.filter(s => s.score >= 60 && s.score < 75).length, color: "var(--warning)" },
-    { label: "0-59", count: sessions.filter(s => s.score < 60).length, color: "var(--destructive)" },
+    { label: "90-100", count: sessions.filter(s => s.scorePct >= 90).length, color: "var(--success)" },
+    { label: "75-89", count: sessions.filter(s => s.scorePct >= 75 && s.scorePct < 90).length, color: "var(--primary)" },
+    { label: "60-74", count: sessions.filter(s => s.scorePct >= 60 && s.scorePct < 75).length, color: "var(--warning)" },
+    { label: "0-59", count: sessions.filter(s => s.scorePct < 60).length, color: "var(--destructive)" },
   ];
   const maxCount = Math.max(...scoreRanges.map(r => r.count), 1);
 
   // Arena breakdown
   const arenaMap: Record<string, { count: number; totalScore: number }> = {};
   sessions.forEach(s => {
-    if (!arenaMap[s.arenaName]) arenaMap[s.arenaName] = { count: 0, totalScore: 0 };
-    arenaMap[s.arenaName].count++;
-    arenaMap[s.arenaName].totalScore += s.score;
+    if (!arenaMap[s.subjectTitle]) arenaMap[s.subjectTitle] = { count: 0, totalScore: 0 };
+    arenaMap[s.subjectTitle].count++;
+    arenaMap[s.subjectTitle].totalScore += s.scorePct;
   });
   const arenaStats = Object.entries(arenaMap)
     .map(([name, data]) => ({ name, count: data.count, avg: Math.round(data.totalScore / data.count) }))
@@ -198,28 +198,28 @@ export default function ProfileScreen() {
                   <div
                     className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm flex-shrink-0"
                     style={{
-                      background: session.score >= 80 ? "rgba(34, 197, 94, 0.2)" :
-                        session.score >= 60 ? "rgba(255, 165, 0, 0.2)" : "rgba(220, 38, 38, 0.2)",
-                      color: session.score >= 80 ? "var(--success)" :
-                        session.score >= 60 ? "var(--warning)" : "var(--destructive)",
+                      background: session.scorePct >= 80 ? "rgba(34, 197, 94, 0.2)" :
+                        session.scorePct >= 60 ? "rgba(255, 165, 0, 0.2)" : "rgba(220, 38, 38, 0.2)",
+                      color: session.scorePct >= 80 ? "var(--success)" :
+                        session.scorePct >= 60 ? "var(--warning)" : "var(--destructive)",
                       fontFamily: "Inter, sans-serif",
                     }}
                   >
-                    {session.score}%
+                    {session.scorePct}%
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{session.arenaName}</div>
+                    <div className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{session.subjectTitle}</div>
                     <div className="text-xs flex items-center gap-2" style={{ color: "var(--muted-foreground)" }}>
                       <span>{session.mode === "full" ? "מבחן מלא" : session.mode === "quick" ? "אימון מהיר" : "חזרה"}</span>
                       <span>•</span>
                       <Clock size={10} className="inline" />
-                      <span>{new Date(session.startTime).toLocaleDateString("he-IL")}</span>
+                      <span>{new Date(session.startedAt).toLocaleDateString("he-IL")}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <CheckCircle2 size={12} style={{ color: "var(--success)" }} />
                     <span className="text-xs" style={{ color: "var(--muted-foreground)", fontFamily: "Inter, sans-serif" }}>
-                      {session.answers.filter(a => a.isCorrect).length}/{session.questions.length || "—"}
+                      {session.answers.filter(a => a.outcome === "correct").length}/{session.questionCount || "—"}
                     </span>
                   </div>
                 </div>

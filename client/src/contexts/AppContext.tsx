@@ -26,13 +26,23 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
 import { useContent } from "@/content/ContentProvider";
 import type { Difficulty, Question } from "@/content/types";
+import { clearSession, readSession, writeSession } from "@/features/auth/session";
+import {
+  clearProgress,
+  loadProgress,
+  persistSession,
+  type ProgressSnapshot,
+} from "@/features/progress/progressStore";
+import { emptyLifetime, type AnswerRecord, type SessionRecord } from "@/features/progress/types";
 
 export type { Question };
+export type { SessionRecord };
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -103,6 +113,9 @@ interface AuthUserAccount {
 
 const AUTH_USERS_STORAGE_KEY = "ic_auth_users_v1";
 
+/** Recorded when a question timed out with nothing selected. */
+const TIMEOUT_INDEX = -1;
+
 /**
  * There is no seeded account.
  *
@@ -145,6 +158,72 @@ function describeDifficulty(mix: Record<Difficulty, number>): string {
   if (total === 0) return "—";
   const [top] = entries.slice().sort((a, b) => b[1] - a[1]);
   return DIFFICULTY_LABEL[top[0]];
+}
+
+function loadAuthUsers(): AuthUserAccount[] {
+  try {
+    const raw = localStorage.getItem(AUTH_USERS_STORAGE_KEY);
+    if (!raw) return getDefaultAuthUsers();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return getDefaultAuthUsers();
+    const normalized = parsed
+      .map((u: Partial<AuthUserAccount>): AuthUserAccount => {
+        const role: "trainee" | "manager" = u.role === "manager" ? "manager" : "trainee";
+        return {
+          id: String(u.id || `u-${Date.now()}`),
+          name: String(u.name || "").trim(),
+          email: String(u.email || "").trim().toLowerCase(),
+          password: String(u.password || ""),
+          role,
+        };
+      })
+      .filter(u => u.name && u.email && u.password);
+    return normalized.length > 0 ? normalized : getDefaultAuthUsers();
+  } catch {
+    return getDefaultAuthUsers();
+  }
+}
+
+function toUser(account: AuthUserAccount, joinedAt: number): User {
+  return {
+    id: account.id,
+    name: account.name,
+    email: account.email,
+    role: account.role,
+    joinDate: new Date(joinedAt),
+    weeklyGoal: 5,
+  };
+}
+
+const EMPTY_PROGRESS: ProgressSnapshot = {
+  sessions: [],
+  lifetime: emptyLifetime(),
+  degraded: false,
+};
+
+/**
+ * Restore accounts, the signed-in user and their progress synchronously,
+ * before the first render. Doing this in an effect instead let MainApp's
+ * "not authenticated" redirect fire first — child effects run before parent
+ * effects — so a refresh always bounced the learner to the login screen.
+ */
+function bootstrap(): { accounts: AuthUserAccount[]; user: User | null; progress: ProgressSnapshot } {
+  const accounts = loadAuthUsers();
+  const stored = readSession();
+  if (!stored) return { accounts, user: null, progress: EMPTY_PROGRESS };
+
+  const account = accounts.find(a => a.id === stored.userId && a.email === stored.email);
+  if (!account) {
+    // The account was deleted since this session was written.
+    clearSession();
+    return { accounts, user: null, progress: EMPTY_PROGRESS };
+  }
+
+  return {
+    accounts,
+    user: toUser(account, stored.joinedAt),
+    progress: loadProgress(account.id),
+  };
 }
 
 // ── Context ────────────────────────────────────────────────────
@@ -194,9 +273,11 @@ interface AppContextValue {
   lastAnswer: QuizAnswer | null;
   isShowingFeedback: boolean;
 
-  // Sessions history
-  sessions: QuizSession[];
+  // Sessions history — persisted summaries, not full question text
+  sessions: SessionRecord[];
   resetSessions: () => void;
+  /** True when progress can no longer be saved (storage full or unavailable). */
+  progressDegraded: boolean;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -204,35 +285,11 @@ const AppContext = createContext<AppContextValue | null>(null);
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const content = useContent();
 
-  const [authUsers, setAuthUsers] = useState<AuthUserAccount[]>(() => {
-    try {
-      const raw = localStorage.getItem(AUTH_USERS_STORAGE_KEY);
-      if (!raw) return getDefaultAuthUsers();
-      const parsed: unknown = JSON.parse(raw);
-      if (!Array.isArray(parsed) || parsed.length === 0) return getDefaultAuthUsers();
-      const normalized = parsed
-        .map((u: Partial<AuthUserAccount>): AuthUserAccount => {
-          const role: "trainee" | "manager" = u.role === "manager" ? "manager" : "trainee";
-          return {
-            id: String(u.id || `u-${Date.now()}`),
-            name: String(u.name || "").trim(),
-            email: String(u.email || "")
-              .trim()
-              .toLowerCase(),
-            password: String(u.password || ""),
-            role,
-          };
-        })
-        .filter(u => u.name && u.email && u.password);
-      return normalized.length > 0 ? normalized : getDefaultAuthUsers();
-    } catch {
-      return getDefaultAuthUsers();
-    }
-  });
-
-  const [user, setUser] = useState<User | null>(null);
+  const [boot] = useState(bootstrap);
+  const [authUsers, setAuthUsers] = useState<AuthUserAccount[]>(boot.accounts);
+  const [user, setUser] = useState<User | null>(boot.user);
   const [currentScreen, setCurrentScreen] = useState<Screen>("hub");
-  const [sessions, setSessions] = useState<QuizSession[]>([]);
+  const [progress, setProgress] = useState<ProgressSnapshot>(boot.progress);
 
   const [trainingConfig, setTrainingConfigState] = useState<TrainingConfig>({
     mode: "full",
@@ -274,6 +331,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [content.subjects]
   );
 
+  const signIn = useCallback((account: AuthUserAccount, displayName?: string) => {
+    const existing = readSession();
+    const joinedAt =
+      existing && existing.userId === account.id ? existing.joinedAt : Date.now();
+
+    setUser({ ...toUser(account, joinedAt), name: displayName || account.name });
+    // Per-user scoping is what makes this safe: two people on one machine
+    // no longer share (or wipe) each other's history.
+    setProgress(loadProgress(account.id));
+    writeSession({ userId: account.id, email: account.email, joinedAt });
+    setCurrentScreen("hub");
+  }, []);
+
   const login = useCallback(
     (email: string, password: string, name?: string) => {
       const normalizedEmail = String(email || "")
@@ -281,18 +351,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .toLowerCase();
       const account = authUsers.find(a => a.email === normalizedEmail && a.password === password);
       if (!account) return false;
-      setUser({
-        id: account.id,
-        name: name || account.name,
-        email: normalizedEmail,
-        role: account.role,
-        joinDate: new Date(),
-        weeklyGoal: 5,
-      });
-      setCurrentScreen("hub");
+      signIn(account, name);
       return true;
     },
-    [authUsers]
+    [authUsers, signIn]
   );
 
   /**
@@ -310,22 +372,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       const account: AuthUserAccount = { id: "u-admin", name, email, password, role: "manager" };
       setAuthUsers([account]);
-      setUser({
-        id: account.id,
-        name: account.name,
-        email: account.email,
-        role: account.role,
-        joinDate: new Date(),
-        weeklyGoal: 5,
-      });
-      setCurrentScreen("hub");
+      signIn(account);
     },
-    []
+    [signIn]
   );
 
   const logout = useCallback(() => {
+    clearSession();
     setUser(null);
-    setSessions([]);
+    // Progress is not cleared — it stays under this user's key, ready for
+    // their next sign-in.
+    setProgress(EMPTY_PROGRESS);
     setCurrentSession(null);
     setCurrentScreen("hub");
   }, []);
@@ -402,10 +459,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const pool = await content.getQuestions({ subjectId: arena.id });
 
       let candidates = pool;
-      if (trainingConfig.mode === "mistakes" && sessions.length > 0) {
+      if (trainingConfig.mode === "mistakes") {
+        // Now backed by persisted history. This mode was effectively dead:
+        // it read an in-memory array that login() emptied on every sign-in.
         const wrongIds = new Set<string>();
-        for (const s of sessions) {
-          for (const a of s.answers) if (!a.isCorrect) wrongIds.add(a.questionId);
+        for (const s of progress.sessions) {
+          for (const a of s.answers) {
+            if (a.outcome === "wrong" || a.outcome === "timeout") wrongIds.add(a.questionId);
+          }
         }
         const mistakes = pool.filter(q => wrongIds.has(q.id));
         if (mistakes.length > 0) candidates = mistakes;
@@ -441,7 +502,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsStartingQuiz(false);
     }
-  }, [arenas, trainingConfig, sessions, content]);
+  }, [arenas, trainingConfig, progress.sessions, content]);
 
   const submitAnswer = useCallback(
     (selectedIndex: number, timeSpent: number) => {
@@ -475,9 +536,52 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (nextIdx >= currentSession.questions.length) {
       const correct = currentSession.answers.filter(a => a.isCorrect).length;
       const score = Math.round((correct / currentSession.questions.length) * 100);
-      const finished: QuizSession = { ...currentSession, endTime: new Date(), score };
+      const endTime = new Date();
+      const finished: QuizSession = { ...currentSession, endTime, score };
       setCurrentSession(finished);
-      setSessions(prev => [finished, ...prev]);
+
+      // Question ids only. Storing the full Question[] would put stems,
+      // options and explanations in localStorage, ~20 KB per session.
+      const byId = new Map(currentSession.questions.map(q => [q.id, q]));
+      const answers: AnswerRecord[] = currentSession.answers.map(a => ({
+        questionId: a.questionId,
+        topicId: byId.get(a.questionId)?.topicId ?? "",
+        selectedIndex: a.selectedIndex === TIMEOUT_INDEX ? null : a.selectedIndex,
+        outcome: a.isCorrect ? "correct" : a.selectedIndex === TIMEOUT_INDEX ? "timeout" : "wrong",
+        ms: a.timeSpent * 1000,
+      }));
+      // Questions the learner never reached (exited early) are skipped,
+      // which is a different signal from answering wrongly.
+      const answeredIds = new Set(currentSession.answers.map(a => a.questionId));
+      for (const q of currentSession.questions) {
+        if (answeredIds.has(q.id)) continue;
+        answers.push({
+          questionId: q.id,
+          topicId: q.topicId,
+          selectedIndex: null,
+          outcome: "skipped",
+          ms: 0,
+        });
+      }
+
+      const record: SessionRecord = {
+        id: currentSession.id,
+        subjectId: currentSession.subjectId,
+        subjectTitle: currentSession.arenaName,
+        mode: currentSession.mode,
+        startedAt: currentSession.startTime.getTime(),
+        endedAt: endTime.getTime(),
+        questionCount: currentSession.questions.length,
+        answers,
+        scorePct: score,
+      };
+
+      if (user) {
+        setProgress(prev => persistSession(user.id, prev, record));
+      } else {
+        setProgress(prev => ({ ...prev, sessions: [record, ...prev.sessions] }));
+      }
+
       setCurrentScreen("results");
       return;
     }
@@ -485,15 +589,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setCurrentQuestionIndex(nextIdx);
     setLastAnswer(null);
     setIsShowingFeedback(false);
-  }, [currentSession, currentQuestionIndex]);
+  }, [currentSession, currentQuestionIndex, user]);
 
   const resetSessions = useCallback(() => {
-    setSessions([]);
+    if (user) setProgress(clearProgress(user.id));
+    else setProgress(EMPTY_PROGRESS);
     setCurrentSession(null);
     setCurrentQuestionIndex(0);
     setLastAnswer(null);
     setIsShowingFeedback(false);
-  }, []);
+  }, [user]);
 
   const currentQuestion = currentSession?.questions[currentQuestionIndex] ?? null;
 
@@ -534,8 +639,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       currentQuestion,
       lastAnswer,
       isShowingFeedback,
-      sessions,
+      sessions: progress.sessions,
       resetSessions,
+      progressDegraded: progress.degraded,
     }),
     [
       user,
@@ -565,7 +671,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       currentQuestion,
       lastAnswer,
       isShowingFeedback,
-      sessions,
+      progress,
       resetSessions,
     ]
   );

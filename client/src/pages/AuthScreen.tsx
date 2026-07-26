@@ -3,7 +3,7 @@
    Design: Midnight Gradient — full-viewport auth with hero bg
    ============================================================ */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useApp } from "@/contexts/AppContext";
 import { toast } from "sonner";
@@ -13,8 +13,14 @@ import brandLogo from "@/assets/logo_black_nobg.png";
 const AUTH_BG = "https://d2xsxph8kpxj0f.cloudfront.net/310519663547397718/Pvji6kDRrPHhdwxpb2BJTp/auth-bg-PoHKYb9u6dNNUuqcGHuDud.webp";
 
 export default function AuthScreen() {
-  const { login, needsSetup, completeSetup } = useApp();
+  const { login, needsSetup, completeSetup, isAuthenticated } = useApp();
   const [, setLocation] = useLocation();
+
+  // A restored session lands on "/" first; send it straight through rather
+  // than showing a login form to someone who is already signed in.
+  useEffect(() => {
+    if (isAuthenticated) setLocation("/app");
+  }, [isAuthenticated, setLocation]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -77,10 +83,13 @@ export default function AuthScreen() {
             סימולטור אימון מכירות מתקדם. שאלות, משוב, ניתוח ביצועים — הכל במקום אחד.
           </p>
           <div className="flex flex-col gap-4">
+            {/* "12 זירות התמחות שונות" used to sit here. There were twelve demo
+                subjects with invented question counts, all serving the same ten
+                questions. Claims here should be ones the product can keep. */}
             {[
-              { icon: Target, text: "12 זירות התמחות שונות" },
-              { icon: TrendingUp, text: "מעקב ביצועים בזמן אמת" },
-              { icon: Zap, text: "משוב מיידי אחרי כל תשובה" },
+              { icon: Target, text: "תרגול ממוקד לפי נושא" },
+              { icon: TrendingUp, text: "מעקב התקדמות אישי" },
+              { icon: Zap, text: "הסבר ומקור אחרי כל תשובה" },
             ].map(({ icon: Icon, text }) => (
               <div key={text} className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"

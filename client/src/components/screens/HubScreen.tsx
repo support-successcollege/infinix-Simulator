@@ -14,13 +14,13 @@ export default function HubScreen() {
 
   const recentSessions = sessions.slice(0, 3);
   const avgScore = sessions.length > 0
-    ? Math.round(sessions.reduce((sum, s) => sum + s.score, 0) / sessions.length)
+    ? Math.round(sessions.reduce((sum, s) => sum + s.scorePct, 0) / sessions.length)
     : 0;
 
   // Counted from real completed sessions. This used to read a `weeklyProgress`
   // field that was hardcoded to 3 at login and never incremented.
   const weekStart = startOfWeekIsrael(new Date()).getTime();
-  const weeklyProgress = sessions.filter(s => new Date(s.startTime).getTime() >= weekStart).length;
+  const weeklyProgress = sessions.filter(s => new Date(s.startedAt).getTime() >= weekStart).length;
   const weeklyGoal = user?.weeklyGoal ?? 5;
   const weeklyPct = Math.min(100, Math.round((weeklyProgress / weeklyGoal) * 100));
 
@@ -176,13 +176,13 @@ export default function HubScreen() {
                       className="w-9 h-9 rounded-lg flex items-center justify-center text-base"
                       style={{ background: "var(--accent)" }}
                     >
-                      {arenaIconByName(session.arenaName)}
+                      {arenaIconByName(session.subjectTitle)}
                     </div>
                     <div>
-                      <div className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{session.arenaName}</div>
+                      <div className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{session.subjectTitle}</div>
                       <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>
                         {session.mode === "full" ? "מבחן מלא" : session.mode === "quick" ? "אימון מהיר" : "חזרה על טעויות"} •{" "}
-                        <Clock size={10} className="inline" /> {new Date(session.startTime).toLocaleDateString("he-IL")}
+                        <Clock size={10} className="inline" /> {new Date(session.startedAt).toLocaleDateString("he-IL")}
                       </div>
                     </div>
                   </div>
@@ -190,12 +190,12 @@ export default function HubScreen() {
                     <div
                       className="text-lg font-black"
                       style={{
-                        color: session.score >= 80 ? "var(--success)" :
-                          session.score >= 60 ? "var(--warning)" : "var(--destructive)",
+                        color: session.scorePct >= 80 ? "var(--success)" :
+                          session.scorePct >= 60 ? "var(--warning)" : "var(--destructive)",
                         fontFamily: "Inter, sans-serif"
                       }}
                     >
-                      {session.score}%
+                      {session.scorePct}%
                     </div>
                   </div>
                 </div>
