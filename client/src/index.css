@@ -603,12 +603,35 @@ html[data-theme="light"] {
     direction: rtl;
   }
 
-  .tf-input:focus {
+  /* This ring was violet — a leftover from an earlier palette that no longer
+     matches --primary. It is now derived from the live token. */
+  .tf-input:focus-visible {
     border-color: var(--primary);
-    box-shadow: 0 0 0 3px oklch(0.65 0.25 280 / 20%);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 35%, transparent);
   }
 
   .tf-input::placeholder {
     color: var(--muted-foreground);
+  }
+
+  /* Nothing in the app defined a visible focus indicator, so keyboard users
+     relied on browser defaults over near-black surfaces. */
+  :where(button, a, select, textarea, [role="radio"], [tabindex]):focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+}
+
+/* The score count-up, screen transitions and pervasive `transition-all`
+   ignored motion preferences entirely. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

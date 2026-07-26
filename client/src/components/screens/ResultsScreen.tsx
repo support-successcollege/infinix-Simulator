@@ -51,7 +51,12 @@ export default function ResultsScreen() {
 
   const totalQ = currentSession.questions.length;
   const correctCount = currentSession.answers.filter(a => a.isCorrect).length;
-  const wrongCount = Math.max(0, totalQ - correctCount);
+  // Answered-and-wrong, timed-out, and never-reached are three different
+  // signals. The old code folded all of them into "wrong" here while the
+  // score divided by total, so the two numbers disagreed.
+  const timeoutCount = currentSession.answers.filter(a => a.selectedIndex === -1).length;
+  const wrongCount = currentSession.answers.filter(a => !a.isCorrect && a.selectedIndex !== -1).length;
+  const unansweredCount = Math.max(0, totalQ - currentSession.answers.length);
   const avgTime = currentSession.answers.length > 0
     ? Math.round(currentSession.answers.reduce((s, a) => s + a.timeSpent, 0) / currentSession.answers.length)
     : 0;
@@ -198,10 +203,14 @@ export default function ResultsScreen() {
             <TrendingUp size={16} style={{ color: "var(--primary)" }} />
             <span className="text-sm font-bold" style={{ color: "var(--foreground)" }}>מגמת ביצועים</span>
           </div>
+          {/* This used to compare a 0-100 percentage against questionCount * 8,
+              which happened to equal 80 at ten questions and was unreachable at
+              thirty. Report what was actually measured instead. */}
           <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
-            {score >= trainingConfig.questionCount * 8
-              ? "אתה בדרך הנכונה! המשך לאמן כדי לשמור על הרמה."
-              : "כל אימון מביא אותך קרוב יותר למטרה. אל תוותר!"}
+            ענית נכון על {correctCount} מתוך {totalQ} שאלות
+            {wrongCount > 0 && ` · ${wrongCount} שגויות`}
+            {timeoutCount > 0 && ` · ${timeoutCount} נגמר הזמן`}
+            {unansweredCount > 0 && ` · ${unansweredCount} לא נענו`}.
           </p>
         </div>
 
