@@ -3,49 +3,26 @@
    Design: Midnight Gradient — dashboard with banners and stats
    ============================================================ */
 
-import { useRef, type ChangeEventHandler } from "react";
 import { useApp } from "@/contexts/AppContext";
-import { BookOpen, Target, TrendingUp, Clock, Award, ChevronLeft, Upload, Play } from "lucide-react";
-import { toast } from "sonner";
+import { BookOpen, Target, TrendingUp, Clock, Award, ChevronLeft, Play } from "lucide-react";
+import { startOfWeekIsrael } from "@/features/progress/stats";
 
 const HERO_BG = "https://d2xsxph8kpxj0f.cloudfront.net/310519663547397718/Pvji6kDRrPHhdwxpb2BJTp/hero-bg-oGqfpceyfXMJ44A5hLQiGu.webp";
 
 export default function HubScreen() {
-  const {
-    user,
-    setScreen,
-    sessions,
-    trainingConfig,
-    importQuestionBank,
-    clearImportedQuestionBank,
-    questionBankLoaded,
-    arenas,
-  } = useApp();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { user, setScreen, sessions, trainingConfig, arenas } = useApp();
 
   const recentSessions = sessions.slice(0, 3);
   const avgScore = sessions.length > 0
     ? Math.round(sessions.reduce((sum, s) => sum + s.score, 0) / sessions.length)
     : 0;
 
-  const weeklyProgress = user?.weeklyProgress ?? 0;
+  // Counted from real completed sessions. This used to read a `weeklyProgress`
+  // field that was hardcoded to 3 at login and never incremented.
+  const weekStart = startOfWeekIsrael(new Date()).getTime();
+  const weeklyProgress = sessions.filter(s => new Date(s.startTime).getTime() >= weekStart).length;
   const weeklyGoal = user?.weeklyGoal ?? 5;
   const weeklyPct = Math.min(100, Math.round((weeklyProgress / weeklyGoal) * 100));
-
-  const handleUploadClick = () => fileInputRef.current?.click();
-
-  const handleFilePicked: ChangeEventHandler<HTMLInputElement> = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      await importQuestionBank(file);
-      toast.success(`המאגר נטען בהצלחה: ${file.name}`);
-    } catch (err) {
-      toast.error(`טעינת JSON נכשלה: ${(err as Error)?.message || "קובץ לא תקין"}`);
-    } finally {
-      e.target.value = "";
-    }
-  };
 
   const arenaIconByName = (name: string) => arenas.find(a => a.name === name)?.icon || "💼";
 
@@ -249,43 +226,6 @@ export default function HubScreen() {
             </button>
           </div>
         )}
-
-        {/* JSON upload */}
-        <div
-          className="rounded-xl p-4 flex items-center gap-3"
-          style={{ background: "var(--tf-surface-soft)", border: "1px dashed var(--tf-border)" }}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json,application/json"
-            className="hidden"
-            onChange={handleFilePicked}
-          />
-          <Upload size={18} style={{ color: "var(--muted-foreground)" }} />
-          <div className="flex-1">
-            <div className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>טעינת מאגר שאלות</div>
-            <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-              {questionBankLoaded ? "מאגר פעיל נטען מהמערכת/JSON" : "העלה קובץ question_bank_infinitycloser.json"}
-            </div>
-          </div>
-          {questionBankLoaded && (
-            <button
-              onClick={clearImportedQuestionBank}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg"
-              style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}
-            >
-              איפוס
-            </button>
-          )}
-          <button
-            onClick={handleUploadClick}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg"
-            style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}
-          >
-            העלה
-          </button>
-        </div>
 
         <div className="h-4" /> {/* Bottom padding */}
       </div>

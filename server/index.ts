@@ -9,15 +9,9 @@ const __dirname = path.dirname(__filename);
 async function startServer() {
   const app = express();
   const server = createServer(app);
-  const questionBankPath = path.resolve(__dirname, "..", "..", "question_bank_infinitycloser.json");
 
-  app.get("/api/question-bank", (_req, res) => {
-    res.sendFile(questionBankPath, (err) => {
-      if (err) {
-        res.status(404).json({ error: "question_bank_infinitycloser.json not found" });
-      }
-    });
-  });
+  // Content is compiled into the client bundle at build time, so there is no
+  // content endpoint to serve. This process is a static file server only.
 
   // Serve static files from dist/public in production
   const staticPath =

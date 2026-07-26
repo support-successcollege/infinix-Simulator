@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "subject": {
+    "id": "ethics",
+    "title": "אתיקה מקצועית ודינים",
+    "icon": "⚖️",
+    "description": "כללי התנהגות מקצועית, חובות כלפי הלקוח והמגבלות החלות על בעל רישיון.",
+    "order": 10
+  },
+  "topics": [
+    {
+      "id": "ethics.unassigned",
+      "subjectId": "ethics",
+      "title": "לא משויך",
+      "description": "שאלות שיובאו וטרם שויכו לנושא. יש לשייך אותן לפני פרסום.",
+      "order": 0
+    },
+    {
+      "id": "ethics.conflict",
+      "subjectId": "ethics",
+      "title": "ניגוד עניינים",
+      "description": "זיהוי ניגוד עניינים, חובת הגילוי שלו והדרך לטפל בו.",
+      "order": 1
+    },
+    {
+      "id": "ethics.disclosure",
+      "subjectId": "ethics",
+      "title": "חובת גילוי ונאמנות ללקוח",
+      "description": "היקף המידע שיש למסור ללקוח והחובה לפעול לטובתו.",
+      "order": 2
+    },
+    {
+      "id": "ethics.licensing",
+      "subjectId": "ethics",
+      "title": "רישוי, סמכויות ואיסורים",
+      "description": "מה בעל רישיון רשאי ואינו רשאי לעשות, וגבולות הסמכות.",
+      "order": 3
+    },
+    {
+      "id": "ethics.marketing",
+      "subjectId": "ethics",
+      "title": "שיווק, פרסום ותגמול",
+      "description": "כללים החלים על פנייה ללקוח, פרסום ומבנה העמלות.",
+      "order": 4
+    },
+    {
+      "id": "ethics.privacy",
+      "subjectId": "ethics",
+      "title": "סודיות ופרטיות",
+      "description": "שמירה על מידע הלקוח והמגבלות על השימוש בו.",
+      "order": 5
+    }
+  ],
+  "questions": []
+}

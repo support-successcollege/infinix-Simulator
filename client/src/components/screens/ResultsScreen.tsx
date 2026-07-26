@@ -174,7 +174,7 @@ export default function ResultsScreen() {
                     }
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium leading-snug" style={{ color: "var(--foreground)" }}>
-                        {idx + 1}. {q.text.length > 80 ? q.text.slice(0, 80) + "..." : q.text}
+                        {idx + 1}. {q.stem.length > 80 ? q.stem.slice(0, 80) + "..." : q.stem}
                       </p>
                       {!answer.isCorrect && (
                         <p className="text-xs mt-1" style={{ color: "var(--success)" }}>

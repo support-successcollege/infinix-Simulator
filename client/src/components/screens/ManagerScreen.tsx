@@ -1,35 +1,57 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEventHandler, type RefObject } from "react";
-import { useApp, type QuestionBankData, type QuestionBankEntry } from "@/contexts/AppContext";
-import { Users, BarChart2, BookOpen, TrendingUp, Award, Clock, Search, Shield, Upload, Download, Trash2, Save, PlusCircle } from "lucide-react";
+/* ============================================================
+   ManagerScreen — content health, content editing, accounts
+
+   What changed and why:
+
+   • The "team" stats were not measurements. `activeThisWeek` was
+     `authUsers.length`; `avgTeamScore` and `totalSessions` were the
+     *manager's own* in-memory sessions presented as the team's; the
+     CSV export wrote a literal `active,0,0,` for every member.
+     Without a backend a manager cannot see anyone else's results, so
+     the panel now says that instead of inventing numbers.
+
+   • "ייבוא קטגוריה ושמירה קבועה" saved to the manager's own
+     localStorage and reached nobody. It is now labelled as a local
+     preview, and publishing means exporting the file and committing
+     it — git is what makes content reach other users.
+
+   • The role guard used to sit above a useMemo, so changing role
+     mid-session changed the hook count and crashed the render.
+     Hooks now run unconditionally and the guard follows them.
+   ============================================================ */
+
+import { useEffect, useMemo, useRef, useState, type ChangeEventHandler } from "react";
+import { useApp } from "@/contexts/AppContext";
+import { useContent } from "@/content/ContentProvider";
+import { SubjectFileSchema, formatIssues } from "@/content/schema";
+import { getExplanationState } from "@/content/completeness";
+import { optionLabel } from "@/lib/hebrew";
+import { downloadBlob, toCsv } from "@/lib/download";
+import type { Question, SubjectFile } from "@/content/types";
+import {
+  Users,
+  BookOpen,
+  Shield,
+  Upload,
+  Download,
+  Trash2,
+  Save,
+  PlusCircle,
+  Search,
+  AlertTriangle,
+  CheckCircle2,
+} from "lucide-react";
 import { toast } from "sonner";
 
-type Tab = "team" | "reports" | "content";
+type Tab = "content" | "accounts";
 
 export default function ManagerScreen() {
-  const {
-    user,
-    sessions,
-    importQuestionBank,
-    importQuestionBankCategories,
-    questionBankLoaded,
-    questionBankData,
-    replaceQuestionBank,
-    deleteQuestionBankCategory,
-    resetQuestionBankContent,
-    authUsers,
-    createAuthUser,
-    updateAuthUserRole,
-    deleteAuthUser,
-  } = useApp();
-  const [activeTab, setActiveTab] = useState<Tab>("team");
-  const [search, setSearch] = useState("");
-  const [newName, setNewName] = useState("");
-  const [newEmail, setNewEmail] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [newRole, setNewRole] = useState<"trainee" | "manager">("trainee");
-  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const { user, authUsers, createAuthUser, updateAuthUserRole, deleteAuthUser } = useApp();
+  const [activeTab, setActiveTab] = useState<Tab>("content");
 
-  if (user?.role !== "manager") {
+  const isManager = user?.role === "manager";
+
+  if (!isManager) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-4 p-6" style={{ direction: "rtl" }}>
         <Shield size={48} style={{ color: "var(--muted-foreground)", opacity: 0.4 }} />
@@ -43,89 +65,38 @@ export default function ManagerScreen() {
     );
   }
 
-  const filteredMembers = authUsers.filter(m =>
-    m.name.toLowerCase().includes(search.toLowerCase()) || m.email.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const stats = useMemo(() => {
-    const totalMembers = authUsers.length;
-    const activeThisWeek = authUsers.length;
-    const avgTeamScore = sessions.length > 0 ? Math.round(sessions.reduce((s, x) => s + x.score, 0) / sessions.length) : 0;
-    const totalSessions = sessions.length;
-    return { totalMembers, activeThisWeek, avgTeamScore, totalSessions };
-  }, [authUsers, sessions]);
-
-  const addMember = () => {
-    const name = newName.trim();
-    const email = newEmail.trim().toLowerCase();
-    if (!name || !email || !newPassword) {
-      toast.error("נא להזין שם, מייל וסיסמה");
-      return;
-    }
-    try {
-      createAuthUser({ name, email, password: newPassword, role: newRole });
-      setNewName("");
-      setNewEmail("");
-      setNewPassword("");
-      setNewRole("trainee");
-      toast.success("משתמש נוסף בהצלחה");
-    } catch (err) {
-      toast.error((err as Error)?.message || "יצירת המשתמש נכשלה");
-    }
-  };
-
-  const exportReportCsv = () => {
-    const rows = [
-      "member_name,email,role,status,sessions,avg_score,last_active",
-      ...authUsers.map(m => `${m.name},${m.email},${m.role},active,0,0,`),
-      "",
-      "session_id,arena,mode,score,start_time,end_time",
-      ...sessions.map(s => `${s.id},${s.arenaName},${s.mode},${s.score},${new Date(s.startTime).toISOString()},${s.endTime ? new Date(s.endTime).toISOString() : ""}`),
-    ];
-    const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "infinitycloser-manager-report.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("דוח CSV יוצא בהצלחה");
-  };
-
-  const handleImportJson: ChangeEventHandler<HTMLInputElement> = async (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    try {
-      await importQuestionBank(f);
-      toast.success("מאגר השאלות עודכן");
-    } catch (err) {
-      toast.error(`ייבוא JSON נכשל: ${(err as Error)?.message || "שגיאה לא ידועה"}`);
-    } finally {
-      e.target.value = "";
-    }
-  };
-
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ direction: "rtl" }}>
-      <div className="flex-shrink-0 px-4 pt-5 pb-4" style={{ borderBottom: "1px solid var(--tf-border)", background: "var(--tf-surface)" }}>
+      <div
+        className="flex-shrink-0 px-4 pt-5 pb-4"
+        style={{ borderBottom: "1px solid var(--tf-border)", background: "var(--tf-surface)" }}
+      >
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(183, 146, 79, 0.2)", border: "1px solid rgba(183, 146, 79, 0.35)" }}>
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{ background: "rgba(183, 146, 79, 0.2)", border: "1px solid rgba(183, 146, 79, 0.35)" }}
+          >
             <Shield size={20} style={{ color: "var(--warning)" }} />
           </div>
           <div>
-            <h1 className="text-xl font-black" style={{ color: "var(--foreground)", fontFamily: "Heebo, sans-serif" }}>מרכז פיקוד</h1>
-            <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>ניהול צוות, דוחות ותוכן</p>
+            <h1 className="text-xl font-black" style={{ color: "var(--foreground)", fontFamily: "Heebo, sans-serif" }}>
+              מרכז פיקוד
+            </h1>
+            <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>ניהול תוכן וחשבונות</p>
           </div>
         </div>
 
-        <div className="flex gap-1 rounded-xl p-1" style={{ background: "var(--muted)" }}>
-          {([
-            { id: "team" as Tab, label: "צוות", icon: Users },
-            { id: "reports" as Tab, label: "דוחות", icon: BarChart2 },
-            { id: "content" as Tab, label: "תוכן", icon: BookOpen },
-          ]).map(({ id, label, icon: Icon }) => (
+        <div className="flex gap-1 rounded-xl p-1" style={{ background: "var(--muted)" }} role="tablist">
+          {(
+            [
+              { id: "content" as Tab, label: "תוכן", icon: BookOpen },
+              { id: "accounts" as Tab, label: "חשבונות", icon: Users },
+            ]
+          ).map(({ id, label, icon: Icon }) => (
             <button
               key={id}
+              role="tab"
+              aria-selected={activeTab === id}
               onClick={() => setActiveTab(id)}
               className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all"
               style={{
@@ -141,107 +112,13 @@ export default function ManagerScreen() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
-        {activeTab === "team" && (
-          <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: "חברי צוות", value: stats.totalMembers.toString(), icon: Users, color: "var(--primary)" },
-                { label: "פעילים", value: stats.activeThisWeek.toString(), icon: TrendingUp, color: "var(--success)" },
-                { label: "ממוצע צוות", value: `${stats.avgTeamScore}%`, icon: Award, color: "var(--warning)" },
-                { label: "סה\"כ מפגשים", value: stats.totalSessions.toString(), icon: Clock, color: "var(--destructive)" },
-              ].map(({ label, value, icon: Icon, color }) => (
-                <div key={label} className="stat-card">
-                  <div className="flex items-center gap-2 mb-2"><Icon size={14} style={{ color }} /><span className="text-xs" style={{ color: "var(--muted-foreground)" }}>{label}</span></div>
-                  <div className="text-2xl font-black" style={{ color: "var(--foreground)", fontFamily: "Inter, sans-serif" }}>{value}</div>
-                </div>
-              ))}
-            </div>
-
-            <div className="rounded-xl p-3 grid grid-cols-1 md:grid-cols-5 gap-2" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
-              <input className="tf-input" placeholder="שם מלא" value={newName} onChange={e => setNewName(e.target.value)} />
-              <input className="tf-input" placeholder="מייל" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
-              <input className="tf-input" placeholder="סיסמה" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
-              <select className="tf-input" value={newRole} onChange={e => setNewRole(e.target.value as "trainee" | "manager")}>
-                <option value="trainee">סטודנט</option>
-                <option value="manager">מנהל</option>
-              </select>
-              <button onClick={addMember} className="rounded-xl px-3 py-2 font-semibold text-sm" style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}>הוסף משתמש</button>
-            </div>
-
-            <div className="relative">
-              <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted-foreground)" }} />
-              <input className="tf-input" placeholder="חיפוש לפי שם או מייל" value={search} onChange={e => setSearch(e.target.value)} style={{ paddingRight: "2.5rem" }} />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              {filteredMembers.map(m => (
-                <div key={m.id} className="rounded-xl p-3 flex items-center gap-3" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm" style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}>{m.name.charAt(0)}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold" style={{ color: "var(--foreground)" }}>{m.name}</div>
-                    <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>{m.email} • {m.role === "manager" ? "מנהל" : "סטודנט"}</div>
-                  </div>
-                  <select
-                    className="tf-input !w-auto text-xs"
-                    value={m.role}
-                    onChange={e => {
-                      try {
-                        updateAuthUserRole(m.id, e.target.value as "trainee" | "manager");
-                        toast.success("תפקיד עודכן");
-                      } catch (err) {
-                        toast.error((err as Error)?.message || "עדכון תפקיד נכשל");
-                      }
-                    }}
-                  >
-                    <option value="trainee">סטודנט</option>
-                    <option value="manager">מנהל</option>
-                  </select>
-                  <button
-                    onClick={() => {
-                      try {
-                        deleteAuthUser(m.id);
-                        toast.success("משתמש נמחק");
-                      } catch (err) {
-                        toast.error((err as Error)?.message || "מחיקת המשתמש נכשלה");
-                      }
-                    }}
-                    className="p-2 rounded-lg"
-                    style={{ background: "rgba(220, 38, 38, 0.12)", color: "var(--destructive)" }}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === "reports" && (
-          <div className="flex flex-col gap-4">
-            <div className="rounded-xl p-4" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
-              <h3 className="font-bold text-sm mb-3" style={{ color: "var(--foreground)" }}>סקירת סשנים</h3>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="stat-card"><span className="text-xs" style={{ color: "var(--muted-foreground)" }}>סה\"כ סשנים</span><span className="text-2xl font-black" style={{ color: "var(--foreground)" }}>{sessions.length}</span></div>
-                <div className="stat-card"><span className="text-xs" style={{ color: "var(--muted-foreground)" }}>ציון ממוצע</span><span className="text-2xl font-black" style={{ color: "var(--foreground)" }}>{sessions.length ? Math.round(sessions.reduce((s, x) => s + x.score, 0) / sessions.length) : 0}%</span></div>
-                <div className="stat-card"><span className="text-xs" style={{ color: "var(--muted-foreground)" }}>זירות פעילות</span><span className="text-2xl font-black" style={{ color: "var(--foreground)" }}>{new Set(sessions.map(s => s.arenaName)).size}</span></div>
-              </div>
-            </div>
-            <button onClick={exportReportCsv} className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}>
-              <Download size={15} /> ייצוא דוח CSV
-            </button>
-          </div>
-        )}
-
-        {activeTab === "content" && (
-          <ContentTab
-            questionBankLoaded={questionBankLoaded}
-            questionBankData={questionBankData}
-            replaceQuestionBank={replaceQuestionBank}
-            importQuestionBankCategories={importQuestionBankCategories}
-            deleteQuestionBankCategory={deleteQuestionBankCategory}
-            resetQuestionBankContent={resetQuestionBankContent}
-            importInputRef={importInputRef}
-            onImportJson={handleImportJson}
+        {activeTab === "content" && <ContentTab />}
+        {activeTab === "accounts" && (
+          <AccountsTab
+            authUsers={authUsers}
+            createAuthUser={createAuthUser}
+            updateAuthUserRole={updateAuthUserRole}
+            deleteAuthUser={deleteAuthUser}
           />
         )}
       </div>
@@ -249,229 +126,400 @@ export default function ManagerScreen() {
   );
 }
 
-function ContentTab({
-  questionBankLoaded,
-  questionBankData,
-  replaceQuestionBank,
-  importQuestionBankCategories,
-  deleteQuestionBankCategory,
-  resetQuestionBankContent,
-  importInputRef,
-  onImportJson,
-}: {
-  questionBankLoaded: boolean;
-  questionBankData: QuestionBankData | null;
-  replaceQuestionBank: (data: QuestionBankData) => void;
-  importQuestionBankCategories: (file: File) => Promise<void>;
-  deleteQuestionBankCategory: (categoryName: string) => void;
-  resetQuestionBankContent: () => Promise<void>;
-  importInputRef: RefObject<HTMLInputElement | null>;
-  onImportJson: ChangeEventHandler<HTMLInputElement>;
-}) {
-  const categoryNames = useMemo(
-    () => Object.keys(questionBankData?.categories || {}).sort((a, b) => a.localeCompare(b, "he")),
-    [questionBankData]
+/* ── Content health + editor ─────────────────────────────────── */
+
+const pct = (n: number) => `${Math.round(n * 100)}%`;
+
+function ContentTab() {
+  const {
+    manifest,
+    subjects,
+    status,
+    sourceLabel,
+    overlayActive,
+    loadSubject,
+    applyOverlaySubject,
+    clearOverlay,
+  } = useContent();
+
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
+  const [file, setFile] = useState<SubjectFile | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [draft, setDraft] = useState<Question | null>(null);
+  const [filter, setFilter] = useState("");
+  const importRef = useRef<HTMLInputElement | null>(null);
+
+  const allSubjectIds = useMemo(
+    () => (manifest?.subjects ?? []).map(s => s.subjectId),
+    [manifest]
   );
-  const [selectedCategory, setSelectedCategory] = useState<string>("");
-  const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number>(0);
-  const [draft, setDraft] = useState<QuestionBankEntry | null>(null);
-  const categoryImportInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (!categoryNames.length) {
-      setSelectedCategory("");
-      return;
+    if (allSubjectIds.length === 0) return;
+    if (!selectedSubjectId || !allSubjectIds.includes(selectedSubjectId)) {
+      setSelectedSubjectId(allSubjectIds[0]);
     }
-    if (!selectedCategory || !categoryNames.includes(selectedCategory)) {
-      setSelectedCategory(categoryNames[0]);
-    }
-  }, [categoryNames, selectedCategory]);
-
-  const selectedQuestions = (questionBankData?.categories?.[selectedCategory]?.questions || []) as QuestionBankEntry[];
-  const selectedQuestion = selectedQuestions[selectedQuestionIndex] || null;
+  }, [allSubjectIds, selectedSubjectId]);
 
   useEffect(() => {
-    if (!selectedQuestion) {
-      setDraft(null);
+    if (!selectedSubjectId) return;
+    let cancelled = false;
+    setLoadError(null);
+    loadSubject(selectedSubjectId)
+      .then(f => {
+        if (cancelled) return;
+        setFile(f);
+        setSelectedIndex(0);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setFile(null);
+        setLoadError(err instanceof Error ? err.message : "טעינת המקצוע נכשלה");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSubjectId, loadSubject, overlayActive]);
+
+  const questions = file?.questions ?? [];
+  const visible = useMemo(() => {
+    const q = filter.trim();
+    if (!q) return questions.map((question, index) => ({ question, index }));
+    return questions
+      .map((question, index) => ({ question, index }))
+      .filter(({ question }) => question.stem.includes(q) || question.id.includes(q));
+  }, [questions, filter]);
+
+  const selected = questions[selectedIndex] ?? null;
+
+  useEffect(() => {
+    setDraft(selected ? { ...selected, options: [...selected.options] } : null);
+  }, [selected]);
+
+  const subjectEntry = manifest?.subjects.find(s => s.subjectId === selectedSubjectId) ?? null;
+
+  const writeFile = (mutate: (copy: SubjectFile) => void) => {
+    if (!file) return;
+    const copy: SubjectFile = structuredClone(file);
+    mutate(copy);
+    const parsed = SubjectFileSchema.safeParse(copy);
+    if (!parsed.success) {
+      toast.error(formatIssues(parsed.error)[0] ?? "השינוי אינו תקין");
       return;
     }
-    setDraft({
-      ...selectedQuestion,
-      options: Array.isArray(selectedQuestion.options) ? selectedQuestion.options.slice(0, 4) : ["", "", "", ""],
+    const next = parsed.data as SubjectFile;
+    setFile(next);
+    applyOverlaySubject(next);
+  };
+
+  const saveDraft = () => {
+    if (!draft) return;
+    const options = draft.options.map(o => o.trim()).filter(Boolean);
+    if (!draft.stem.trim() || options.length < 2) {
+      toast.error("יש להזין נוסח שאלה ולפחות 2 אפשרויות");
+      return;
+    }
+    writeFile(copy => {
+      copy.questions[selectedIndex] = {
+        ...draft,
+        options,
+        correctIndex: Math.max(0, Math.min(options.length - 1, draft.correctIndex)),
+        updatedAt: new Date().toISOString().slice(0, 10),
+      };
     });
-  }, [selectedQuestion, selectedCategory, selectedQuestionIndex]);
-
-  const writeBank = (mutator: (copy: QuestionBankData) => void) => {
-    if (!questionBankData) return;
-    const copy: QuestionBankData = JSON.parse(JSON.stringify(questionBankData));
-    mutator(copy);
-    replaceQuestionBank(copy);
+    toast.success("השינוי נשמר בטיוטה המקומית");
   };
 
   const addQuestion = () => {
-    if (!selectedCategory) return;
-    writeBank(copy => {
-      const cat = copy.categories?.[selectedCategory];
-      if (!cat) return;
-      const nextId = `${selectedCategory}-${Date.now()}`;
-      if (!Array.isArray(cat.questions)) cat.questions = [];
-      cat.questions.unshift({
-        id: nextId,
-        question: "שאלה חדשה",
-        options: ["אפשרות 1", "אפשרות 2", "אפשרות 3", "אפשרות 4"],
+    if (!file) return;
+    const topicId = file.topics[0]?.id;
+    if (!topicId) {
+      toast.error("יש להגדיר נושא אחד לפחות במקצוע לפני הוספת שאלה");
+      return;
+    }
+    writeFile(copy => {
+      copy.questions.unshift({
+        id: `${copy.subject.id}.new.${Date.now()}`,
+        stem: "שאלה חדשה",
+        options: ["אפשרות א", "אפשרות ב", "אפשרות ג", "אפשרות ד"],
         correctIndex: 0,
         explanation: "",
         coachNote: "",
+        legalRefs: [],
+        subjectId: copy.subject.id,
+        topicId,
         difficulty: "medium",
-        status: "active",
+        tags: [],
+        status: "draft",
+        source: {},
+        updatedAt: new Date().toISOString().slice(0, 10),
       });
     });
-    setSelectedQuestionIndex(0);
+    setSelectedIndex(0);
     toast.success("שאלה חדשה נוספה");
   };
 
   const deleteQuestion = () => {
-    if (!selectedCategory) return;
-    writeBank(copy => {
-      const cat = copy.categories?.[selectedCategory];
-      if (!cat?.questions?.length) return;
-      cat.questions.splice(selectedQuestionIndex, 1);
+    if (!selected) return;
+    if (!window.confirm(`למחוק את השאלה "${selected.stem.slice(0, 50)}"?`)) return;
+    writeFile(copy => {
+      copy.questions.splice(selectedIndex, 1);
     });
-    setSelectedQuestionIndex(0);
-    toast.success("השאלה נמחקה");
+    setSelectedIndex(0);
+    toast.success("השאלה נמחקה מהטיוטה המקומית");
   };
 
-  const saveDraft = () => {
-    if (!selectedCategory || !draft) return;
-    const options = (draft.options || []).map(o => String(o || "").trim()).filter(Boolean);
-    if (!draft.question || options.length < 2) {
-      toast.error("יש להזין שאלה ולפחות 2 אפשרויות");
+  const exportSubject = () => {
+    if (!file) return;
+    const parsed = SubjectFileSchema.safeParse(file);
+    if (!parsed.success) {
+      toast.error(`הקובץ אינו תקין: ${formatIssues(parsed.error)[0]}`);
       return;
     }
-    writeBank(copy => {
-      const cat = copy.categories?.[selectedCategory];
-      if (!cat?.questions) return;
-      const safeCorrect = Math.max(0, Math.min(options.length - 1, Number(draft.correctIndex) || 0));
-      cat.questions[selectedQuestionIndex] = {
-        ...cat.questions[selectedQuestionIndex],
-        ...draft,
-        options,
-        correctIndex: safeCorrect,
-        status: draft.status || "active",
-      };
-    });
-    toast.success("השאלה נשמרה");
+    downloadBlob(
+      `${file.subject.id}.json`,
+      JSON.stringify(parsed.data, null, 2),
+      "application/json;charset=utf-8"
+    );
+    toast.success("הקובץ אומת והורד");
   };
 
-  const exportJson = () => {
-    if (!questionBankData) return;
-    const blob = new Blob([JSON.stringify(questionBankData, null, 2)], { type: "application/json;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "question_bank_infinitycloser.updated.json";
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("קובץ JSON מעודכן יוצא");
-  };
-
-  const handleCategoryImport: ChangeEventHandler<HTMLInputElement> = async (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
+  const handleImport: ChangeEventHandler<HTMLInputElement> = async e => {
+    const picked = e.target.files?.[0];
+    if (!picked) return;
     try {
-      await importQuestionBankCategories(f);
-      toast.success("הקטגוריות נוספו ונשמרו קבוע");
+      const parsed = SubjectFileSchema.safeParse(JSON.parse(await picked.text()));
+      if (!parsed.success) {
+        toast.error(`הקובץ אינו תקין: ${formatIssues(parsed.error)[0]}`);
+        return;
+      }
+      const next = parsed.data as SubjectFile;
+      applyOverlaySubject(next);
+      setSelectedSubjectId(next.subject.id);
+      toast.success("נטען לתצוגה מקדימה מקומית — לא פורסם");
     } catch (err) {
-      toast.error(`ייבוא קטגוריה נכשל: ${(err as Error)?.message || "שגיאה לא ידועה"}`);
+      toast.error(`טעינת הקובץ נכשלה: ${(err as Error)?.message ?? "קובץ לא תקין"}`);
     } finally {
       e.target.value = "";
     }
   };
 
-  const handleDeleteCategory = () => {
-    if (!selectedCategory) return;
-    const ok = window.confirm(`למחוק את הקטגוריה "${selectedCategory}"?`);
-    if (!ok) return;
-    deleteQuestionBankCategory(selectedCategory);
-    setSelectedQuestionIndex(0);
-    toast.success("הקטגוריה נמחקה");
-  };
-
-  const handleResetAll = async () => {
-    const ok = window.confirm("לאפס את כל תוכן המאגר? הפעולה תסיר שינויים שנשמרו מקומית.");
-    if (!ok) return;
-    await resetQuestionBankContent();
-    setSelectedQuestionIndex(0);
-    toast.success("תוכן המאגר אופס");
-  };
+  if (status === "loading") {
+    return <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>טוען תוכן…</p>;
+  }
 
   return (
     <div className="flex flex-col gap-4">
-      <input ref={importInputRef} type="file" accept=".json,application/json" className="hidden" onChange={onImportJson} />
-      <input ref={categoryImportInputRef} type="file" accept=".json,application/json" className="hidden" onChange={handleCategoryImport} />
+      <input
+        ref={importRef}
+        type="file"
+        accept=".json,application/json"
+        className="hidden"
+        onChange={handleImport}
+      />
 
+      {overlayActive && (
+        <div
+          className="rounded-xl p-3 flex items-start gap-3"
+          style={{ background: "rgba(255, 165, 0, 0.12)", border: "1px solid rgba(255, 165, 0, 0.35)" }}
+        >
+          <AlertTriangle size={18} style={{ color: "var(--warning)", flexShrink: 0, marginTop: 2 }} />
+          <div className="flex-1">
+            <div className="text-sm font-bold" style={{ color: "var(--warning)" }}>
+              תצוגה מקדימה מקומית — לא פורסם
+            </div>
+            <div className="text-xs mt-1" style={{ color: "var(--muted-foreground)" }}>
+              השינויים נשמרים בדפדפן הזה בלבד ואינם נראים לאף לומד. כדי לפרסם: ייצא את הקובץ,
+              שמור אותו ב־<code>client/src/content/subjects/</code> והעלה לריפו.
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              clearOverlay();
+              toast.success("הטיוטה המקומית נמחקה");
+            }}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg flex-shrink-0"
+            style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}
+          >
+            בטל טיוטה
+          </button>
+        </div>
+      )}
+
+      {/* Content health — every number here is measured */}
       <div className="rounded-xl p-4" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <h3 className="font-bold text-sm" style={{ color: "var(--foreground)" }}>עריכת JSON</h3>
-          <span className="text-xs font-semibold" style={{ color: questionBankLoaded ? "var(--success)" : "var(--warning)" }}>
-            {questionBankLoaded ? "מאגר פעיל" : "מצב דמו"}
+          <h3 className="font-bold text-sm" style={{ color: "var(--foreground)" }}>בריאות המאגר</h3>
+          <span className="text-xs font-semibold" style={{ color: "var(--muted-foreground)" }}>
+            {sourceLabel}
           </span>
         </div>
 
-        {!questionBankData || !categoryNames.length ? (
-          <div className="text-sm" style={{ color: "var(--muted-foreground)" }}>
-            אין מאגר JSON לעריכה. ייבא קובץ כדי להתחיל.
+        {manifest && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            {[
+              { label: "מפורסמות", value: String(manifest.totals.byStatus.published) },
+              { label: "בבדיקה", value: String(manifest.totals.byStatus.review) },
+              { label: "טיוטה", value: String(manifest.totals.byStatus.draft) },
+              { label: "כיסוי הסברים", value: pct(manifest.totals.explanationCoverage) },
+            ].map(({ label, value }) => (
+              <div key={label} className="stat-card">
+                <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>{label}</span>
+                <span className="text-2xl font-black" style={{ color: "var(--foreground)", fontFamily: "Inter, sans-serif" }}>
+                  {value}
+                </span>
+              </div>
+            ))}
           </div>
+        )}
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs" style={{ color: "var(--foreground)" }}>
+            <thead>
+              <tr style={{ color: "var(--muted-foreground)" }}>
+                <th className="text-right py-2">מקצוע</th>
+                <th className="text-right py-2">מפורסמות</th>
+                <th className="text-right py-2">בבדיקה</th>
+                <th className="text-right py-2">הסברים</th>
+                <th className="text-right py-2">מקורות</th>
+                <th className="text-right py-2">סימולציית בחינה</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(manifest?.subjects ?? []).map(s => (
+                <tr key={s.subjectId} style={{ borderTop: "1px solid var(--tf-border)" }}>
+                  <td className="py-2">{s.icon} {s.title}</td>
+                  <td className="py-2">{s.byStatus.published}</td>
+                  <td className="py-2">{s.byStatus.review}</td>
+                  <td className="py-2">{pct(s.explanationCoverage)}</td>
+                  <td className="py-2">{pct(s.legalRefCoverage)}</td>
+                  <td className="py-2">
+                    {!s.examReadiness ? (
+                      <span style={{ color: "var(--muted-foreground)" }}>—</span>
+                    ) : s.examReadiness.ready ? (
+                      <span style={{ color: "var(--success)" }}>מוכנה</span>
+                    ) : (
+                      <span style={{ color: "var(--warning)" }}>
+                        חסומה · {s.examReadiness.blockers
+                          .map(b => `${b.title} ${b.available}/${b.required}`)
+                          .join(", ")}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {subjects.length === 0 && (
+          <p className="text-sm mt-3" style={{ color: "var(--muted-foreground)" }}>
+            אין מקצועות עם שאלות מפורסמות. לומדים לא יראו תוכן עד שיפורסמו שאלות.
+          </p>
+        )}
+      </div>
+
+      {/* Editor */}
+      <div className="rounded-xl p-4" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
+        <h3 className="font-bold text-sm mb-3" style={{ color: "var(--foreground)" }}>עריכת שאלות</h3>
+
+        {loadError && (
+          <p className="text-sm mb-3" style={{ color: "var(--destructive)" }}>{loadError}</p>
+        )}
+
+        {!file ? (
+          <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>אין מקצוע לעריכה.</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)] gap-3">
-            <div className="rounded-xl p-3 max-h-[460px] overflow-y-auto" style={{ background: "var(--background)", border: "1px solid var(--tf-border)" }}>
-              <div className="text-xs font-bold mb-2" style={{ color: "var(--muted-foreground)" }}>קטגוריות</div>
-              <select className="tf-input mb-2" value={selectedCategory} onChange={e => { setSelectedCategory(e.target.value); setSelectedQuestionIndex(0); }}>
-                {categoryNames.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <div className="text-xs font-bold mb-2" style={{ color: "var(--muted-foreground)" }}>
-                שאלות ({selectedQuestions.length})
-              </div>
-              <div className="flex gap-1 mb-2">
-                <button onClick={handleDeleteCategory} className="px-2 py-1 rounded-lg text-[11px] font-bold" style={{ background: "rgba(220, 38, 38, 0.12)", color: "var(--destructive)" }}>
-                  מחק קטגוריה
-                </button>
-                <button onClick={handleResetAll} className="px-2 py-1 rounded-lg text-[11px] font-bold" style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}>
-                  איפוס מלא
-                </button>
-              </div>
-              <div className="flex flex-col gap-1">
-                {selectedQuestions.map((q, idx) => (
-                  <button
-                    key={q.id || idx}
-                    onClick={() => setSelectedQuestionIndex(idx)}
-                    className="text-right p-2 rounded-lg text-xs"
-                    style={{
-                      background: idx === selectedQuestionIndex ? "var(--accent)" : "transparent",
-                      color: idx === selectedQuestionIndex ? "var(--accent-foreground)" : "var(--foreground)",
-                      border: "1px solid var(--tf-border)",
-                    }}
-                  >
-                    {(q.question || `שאלה ${idx + 1}`).slice(0, 70)}
-                  </button>
+          <div className="grid grid-cols-1 md:grid-cols-[300px_minmax(0,1fr)] gap-3">
+            <div
+              className="rounded-xl p-3 max-h-[460px] overflow-y-auto"
+              style={{ background: "var(--background)", border: "1px solid var(--tf-border)" }}
+            >
+              <label htmlFor="mgr-subject" className="block text-xs font-bold mb-1" style={{ color: "var(--muted-foreground)" }}>
+                מקצוע
+              </label>
+              <select
+                id="mgr-subject"
+                className="tf-input mb-2"
+                value={selectedSubjectId}
+                onChange={e => setSelectedSubjectId(e.target.value)}
+              >
+                {(manifest?.subjects ?? []).map(s => (
+                  <option key={s.subjectId} value={s.subjectId}>{s.title}</option>
                 ))}
+              </select>
+
+              <label htmlFor="mgr-filter" className="sr-only">חיפוש שאלה</label>
+              <div className="relative mb-2">
+                <Search size={14} className="absolute right-2 top-1/2 -translate-y-1/2" style={{ color: "var(--muted-foreground)" }} />
+                <input
+                  id="mgr-filter"
+                  className="tf-input"
+                  placeholder="חיפוש בנוסח או במזהה"
+                  value={filter}
+                  onChange={e => setFilter(e.target.value)}
+                  style={{ paddingRight: "2rem" }}
+                />
+              </div>
+
+              <div className="text-xs font-bold mb-2" style={{ color: "var(--muted-foreground)" }}>
+                שאלות ({visible.length} מתוך {questions.length})
+              </div>
+
+              <div className="flex flex-col gap-1">
+                {visible.map(({ question, index }) => {
+                  const state = getExplanationState(question);
+                  return (
+                    <button
+                      key={question.id}
+                      onClick={() => setSelectedIndex(index)}
+                      className="text-right p-2 rounded-lg text-xs"
+                      style={{
+                        background: index === selectedIndex ? "var(--accent)" : "transparent",
+                        color: index === selectedIndex ? "var(--accent-foreground)" : "var(--foreground)",
+                        border: "1px solid var(--tf-border)",
+                      }}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        {state === "missing" ? (
+                          <AlertTriangle size={11} style={{ color: "var(--warning)", flexShrink: 0 }} />
+                        ) : (
+                          <CheckCircle2 size={11} style={{ color: "var(--success)", flexShrink: 0 }} />
+                        )}
+                        <span className="flex-1 min-w-0">{question.stem.slice(0, 60)}</span>
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             <div className="rounded-xl p-3" style={{ background: "var(--background)", border: "1px solid var(--tf-border)" }}>
-              {draft ? (
+              {!draft ? (
+                <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>בחר שאלה מהרשימה כדי לערוך.</p>
+              ) : (
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs" style={{ color: "var(--muted-foreground)" }}>נוסח שאלה</label>
-                  <textarea className="tf-input min-h-[88px]" value={draft.question || ""} onChange={e => setDraft({ ...draft, question: e.target.value })} />
+                  <label htmlFor="q-stem" className="text-xs" style={{ color: "var(--muted-foreground)" }}>נוסח שאלה</label>
+                  <textarea
+                    id="q-stem"
+                    className="tf-input min-h-[88px]"
+                    value={draft.stem}
+                    onChange={e => setDraft({ ...draft, stem: e.target.value })}
+                  />
 
-                  {(draft.options || []).map((opt, i) => (
+                  {draft.options.map((opt, i) => (
                     <div key={i} className="flex items-center gap-2">
-                      <span className="text-xs w-5" style={{ color: "var(--muted-foreground)" }}>{i + 1}</span>
+                      <span className="text-xs w-5 font-bold" style={{ color: "var(--muted-foreground)" }}>
+                        {optionLabel(i)}
+                      </span>
+                      <label htmlFor={`q-opt-${i}`} className="sr-only">{`אפשרות ${optionLabel(i)}`}</label>
                       <input
+                        id={`q-opt-${i}`}
                         className="tf-input"
-                        value={opt || ""}
+                        value={opt}
                         onChange={e => {
-                          const next = [...(draft.options || ["", "", "", ""])];
+                          const next = [...draft.options];
                           next[i] = e.target.value;
                           setDraft({ ...draft, options: next });
                         }}
@@ -479,42 +527,107 @@ function ContentTab({
                     </div>
                   ))}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    <label className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <label htmlFor="q-correct" className="text-xs" style={{ color: "var(--muted-foreground)" }}>
                       תשובה נכונה
-                      <select className="tf-input mt-1" value={Number(draft.correctIndex) || 0} onChange={e => setDraft({ ...draft, correctIndex: Number(e.target.value) })}>
-                        {[0, 1, 2, 3].map(v => <option key={v} value={v}>{`אפשרות ${v + 1}`}</option>)}
+                      <select
+                        id="q-correct"
+                        className="tf-input mt-1"
+                        value={draft.correctIndex}
+                        onChange={e => setDraft({ ...draft, correctIndex: Number(e.target.value) })}
+                      >
+                        {draft.options.map((_, i) => (
+                          <option key={i} value={i}>{optionLabel(i)}</option>
+                        ))}
                       </select>
                     </label>
-                    <label className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+                    <label htmlFor="q-difficulty" className="text-xs" style={{ color: "var(--muted-foreground)" }}>
                       רמת קושי
-                      <select className="tf-input mt-1" value={(draft.difficulty as string) || "medium"} onChange={e => setDraft({ ...draft, difficulty: e.target.value })}>
-                        <option value="easy">easy</option>
-                        <option value="medium">medium</option>
-                        <option value="hard">hard</option>
+                      <select
+                        id="q-difficulty"
+                        className="tf-input mt-1"
+                        value={draft.difficulty}
+                        onChange={e =>
+                          setDraft({ ...draft, difficulty: e.target.value as Question["difficulty"] })
+                        }
+                      >
+                        <option value="easy">קל</option>
+                        <option value="medium">בינוני</option>
+                        <option value="hard">קשה</option>
+                      </select>
+                    </label>
+                    <label htmlFor="q-status" className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+                      סטטוס
+                      <select
+                        id="q-status"
+                        className="tf-input mt-1"
+                        value={draft.status}
+                        onChange={e => setDraft({ ...draft, status: e.target.value as Question["status"] })}
+                      >
+                        <option value="draft">טיוטה</option>
+                        <option value="review">בבדיקה</option>
+                        <option value="published">מפורסמת</option>
+                        <option value="archived">בארכיון</option>
                       </select>
                     </label>
                   </div>
 
-                  <label className="text-xs" style={{ color: "var(--muted-foreground)" }}>הסבר</label>
-                  <textarea className="tf-input min-h-[82px]" value={draft.explanation || ""} onChange={e => setDraft({ ...draft, explanation: e.target.value })} />
-                  <label className="text-xs" style={{ color: "var(--muted-foreground)" }}>הערת מאמן</label>
-                  <textarea className="tf-input min-h-[72px]" value={draft.coachNote || ""} onChange={e => setDraft({ ...draft, coachNote: e.target.value })} />
+                  <label htmlFor="q-topic" className="text-xs" style={{ color: "var(--muted-foreground)" }}>נושא</label>
+                  <select
+                    id="q-topic"
+                    className="tf-input"
+                    value={draft.topicId}
+                    onChange={e => setDraft({ ...draft, topicId: e.target.value })}
+                  >
+                    {file.topics.map(t => (
+                      <option key={t.id} value={t.id}>{t.title}</option>
+                    ))}
+                  </select>
+
+                  <label htmlFor="q-explanation" className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+                    הסבר — חובה כדי לפרסם
+                  </label>
+                  <textarea
+                    id="q-explanation"
+                    className="tf-input min-h-[82px]"
+                    value={draft.explanation}
+                    onChange={e => setDraft({ ...draft, explanation: e.target.value })}
+                  />
+
+                  <label htmlFor="q-coach" className="text-xs" style={{ color: "var(--muted-foreground)" }}>טיפ לבחינה</label>
+                  <textarea
+                    id="q-coach"
+                    className="tf-input min-h-[60px]"
+                    value={draft.coachNote}
+                    onChange={e => setDraft({ ...draft, coachNote: e.target.value })}
+                  />
+
+                  <LegalRefsEditor draft={draft} setDraft={setDraft} />
 
                   <div className="flex flex-wrap gap-2 mt-2">
-                    <button onClick={saveDraft} className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1" style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}>
-                      <Save size={13} /> שמור שאלה
+                    <button
+                      onClick={saveDraft}
+                      className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1"
+                      style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}
+                    >
+                      <Save size={13} /> שמור בטיוטה
                     </button>
-                    <button onClick={addQuestion} className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1" style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}>
+                    <button
+                      onClick={addQuestion}
+                      className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1"
+                      style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}
+                    >
                       <PlusCircle size={13} /> הוסף שאלה
                     </button>
-                    <button onClick={deleteQuestion} className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1" style={{ background: "rgba(220, 38, 38, 0.12)", color: "var(--destructive)" }}>
+                    <button
+                      onClick={deleteQuestion}
+                      className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1"
+                      style={{ background: "rgba(220, 38, 38, 0.12)", color: "var(--destructive)" }}
+                    >
                       <Trash2 size={13} /> מחק שאלה
                     </button>
                   </div>
                 </div>
-              ) : (
-                <div className="text-sm" style={{ color: "var(--muted-foreground)" }}>בחר שאלה מהרשימה כדי לערוך.</div>
               )}
             </div>
           </div>
@@ -522,21 +635,253 @@ function ContentTab({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-        <button onClick={() => importInputRef.current?.click()} className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}>
-          <Upload size={15} /> ייבוא JSON חדש
+        <button
+          onClick={() => importRef.current?.click()}
+          className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+          style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}
+        >
+          <Upload size={15} /> טעינה מקומית לתצוגה מקדימה
         </button>
-        <button onClick={exportJson} className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}>
-          <Download size={15} /> ייצוא JSON מעודכן
+        <button
+          onClick={exportSubject}
+          className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+          style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}
+        >
+          <Download size={15} /> ייצוא חבילת תוכן לפרסום
         </button>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-        <button onClick={() => categoryImportInputRef.current?.click()} className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{ background: "#b7924f", color: "#000" }}>
-          <Upload size={15} /> ייבוא קטגוריה ושמירה קבועה
-        </button>
-        <button onClick={handleResetAll} className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{ background: "rgba(220, 38, 38, 0.12)", color: "var(--destructive)", border: "1px solid rgba(220, 38, 38, 0.3)" }}>
-          <Trash2 size={15} /> מחיקה ואיפוס תוכן
+    </div>
+  );
+}
+
+function LegalRefsEditor({
+  draft,
+  setDraft,
+}: {
+  draft: Question;
+  setDraft: (q: Question) => void;
+}) {
+  const update = (i: number, patch: Partial<Question["legalRefs"][number]>) => {
+    const next = draft.legalRefs.map((ref, idx) => (idx === i ? { ...ref, ...patch } : ref));
+    setDraft({ ...draft, legalRefs: next });
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>מקורות (חוק / סעיף)</span>
+      {draft.legalRefs.map((ref, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <label htmlFor={`q-law-${i}`} className="sr-only">שם החוק</label>
+          <input
+            id={`q-law-${i}`}
+            className="tf-input"
+            placeholder="שם החוק"
+            value={ref.law}
+            onChange={e => update(i, { law: e.target.value })}
+          />
+          <label htmlFor={`q-section-${i}`} className="sr-only">סעיף</label>
+          <input
+            id={`q-section-${i}`}
+            className="tf-input"
+            placeholder="סעיף"
+            value={ref.section ?? ""}
+            onChange={e => update(i, { section: e.target.value })}
+          />
+          <button
+            type="button"
+            aria-label={`הסר מקור ${i + 1}`}
+            onClick={() => setDraft({ ...draft, legalRefs: draft.legalRefs.filter((_, idx) => idx !== i) })}
+            className="p-2 rounded-lg flex-shrink-0"
+            style={{ background: "rgba(220, 38, 38, 0.12)", color: "var(--destructive)" }}
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => setDraft({ ...draft, legalRefs: [...draft.legalRefs, { law: "", section: "" }] })}
+        className="self-start text-xs font-semibold px-2 py-1 rounded-lg"
+        style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}
+      >
+        + הוסף מקור
+      </button>
+    </div>
+  );
+}
+
+/* ── Accounts ────────────────────────────────────────────────── */
+
+type AuthUsers = ReturnType<typeof useApp>["authUsers"];
+
+function AccountsTab({
+  authUsers,
+  createAuthUser,
+  updateAuthUserRole,
+  deleteAuthUser,
+}: {
+  authUsers: AuthUsers;
+  createAuthUser: ReturnType<typeof useApp>["createAuthUser"];
+  updateAuthUserRole: ReturnType<typeof useApp>["updateAuthUserRole"];
+  deleteAuthUser: ReturnType<typeof useApp>["deleteAuthUser"];
+}) {
+  const [search, setSearch] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState<"trainee" | "manager">("trainee");
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return authUsers.filter(
+      m => m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q)
+    );
+  }, [authUsers, search]);
+
+  const addMember = () => {
+    try {
+      createAuthUser({
+        name: newName.trim(),
+        email: newEmail.trim().toLowerCase(),
+        password: newPassword,
+        role: newRole,
+      });
+      setNewName("");
+      setNewEmail("");
+      setNewPassword("");
+      setNewRole("trainee");
+      toast.success("משתמש נוסף בהצלחה");
+    } catch (err) {
+      toast.error((err as Error)?.message || "יצירת המשתמש נכשלה");
+    }
+  };
+
+  // Only fields that are actually known are exported. The previous version
+  // wrote a literal `active,0,0,` for sessions and average score.
+  const exportRoster = () => {
+    downloadBlob(
+      "infinix-accounts.csv",
+      toCsv(
+        ["name", "email", "role"],
+        filtered.map(m => [m.name, m.email, m.role])
+      ),
+      "text/csv;charset=utf-8"
+    );
+    toast.success("רשימת החשבונות יוצאה");
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div
+        className="rounded-xl p-3 flex items-start gap-3"
+        style={{ background: "var(--tf-surface-soft)", border: "1px solid var(--tf-border)" }}
+      >
+        <AlertTriangle size={16} style={{ color: "var(--muted-foreground)", flexShrink: 0, marginTop: 2 }} />
+        <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+          נתוני ביצועים נשמרים במכשיר של כל לומד ואינם נגישים מכאן. גם החשבונות נוצרים
+          מקומית בדפדפן זה — כדי שחשבונות ותוצאות יהיו משותפים לכל המשתמשים נדרש שרת.
+        </p>
+      </div>
+
+      <div
+        className="rounded-xl p-3 grid grid-cols-1 md:grid-cols-5 gap-2"
+        style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}
+      >
+        <label htmlFor="acc-name" className="sr-only">שם מלא</label>
+        <input id="acc-name" className="tf-input" placeholder="שם מלא" value={newName} onChange={e => setNewName(e.target.value)} />
+        <label htmlFor="acc-email" className="sr-only">מייל</label>
+        <input id="acc-email" className="tf-input" placeholder="מייל" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
+        <label htmlFor="acc-password" className="sr-only">סיסמה</label>
+        <input id="acc-password" className="tf-input" placeholder="סיסמה" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+        <label htmlFor="acc-role" className="sr-only">תפקיד</label>
+        <select id="acc-role" className="tf-input" value={newRole} onChange={e => setNewRole(e.target.value as "trainee" | "manager")}>
+          <option value="trainee">סטודנט</option>
+          <option value="manager">מנהל</option>
+        </select>
+        <button
+          onClick={addMember}
+          className="rounded-xl px-3 py-2 font-semibold text-sm"
+          style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}
+        >
+          הוסף משתמש
         </button>
       </div>
+
+      <div className="relative">
+        <label htmlFor="acc-search" className="sr-only">חיפוש לפי שם או מייל</label>
+        <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted-foreground)" }} />
+        <input
+          id="acc-search"
+          className="tf-input"
+          placeholder="חיפוש לפי שם או מייל"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ paddingRight: "2.5rem" }}
+        />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        {filtered.map(m => (
+          <div
+            key={m.id}
+            className="rounded-xl p-3 flex items-center gap-3"
+            style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}
+          >
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm"
+              style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
+            >
+              {m.name.charAt(0)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold" style={{ color: "var(--foreground)" }}>{m.name}</div>
+              <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+                {m.email} • {m.role === "manager" ? "מנהל" : "סטודנט"}
+              </div>
+            </div>
+            <label htmlFor={`role-${m.id}`} className="sr-only">{`תפקיד עבור ${m.name}`}</label>
+            <select
+              id={`role-${m.id}`}
+              className="tf-input !w-auto text-xs"
+              value={m.role}
+              onChange={e => {
+                try {
+                  updateAuthUserRole(m.id, e.target.value as "trainee" | "manager");
+                  toast.success("תפקיד עודכן");
+                } catch (err) {
+                  toast.error((err as Error)?.message || "עדכון תפקיד נכשל");
+                }
+              }}
+            >
+              <option value="trainee">סטודנט</option>
+              <option value="manager">מנהל</option>
+            </select>
+            <button
+              aria-label={`מחק את ${m.name}`}
+              onClick={() => {
+                try {
+                  deleteAuthUser(m.id);
+                  toast.success("משתמש נמחק");
+                } catch (err) {
+                  toast.error((err as Error)?.message || "מחיקת המשתמש נכשלה");
+                }
+              }}
+              className="p-2 rounded-lg"
+              style={{ background: "rgba(220, 38, 38, 0.12)", color: "var(--destructive)" }}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={exportRoster}
+        className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+        style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}
+      >
+        <Download size={15} /> ייצוא רשימת חשבונות
+      </button>
     </div>
   );
 }

@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 1,
+  "subject": {
+    "id": "sales-fundamentals",
+    "title": "יסודות המכירה",
+    "icon": "🎯",
+    "description": "טכניקות שיחת מכירה, טיפול בהתנגדויות והצגת ערך.",
+    "order": 90
+  },
+  "topics": [
+    {
+      "id": "sales-fundamentals.discovery",
+      "subjectId": "sales-fundamentals",
+      "title": "איתור צרכים ובניית אמון",
+      "description": "פתיחת שיחה, שאלות מנחות והקשבה ללקוח.",
+      "order": 1
+    },
+    {
+      "id": "sales-fundamentals.value",
+      "subjectId": "sales-fundamentals",
+      "title": "הצגת ערך ותמחור",
+      "description": "תרגום תכונות לתועלות, תזמון המחיר ובניית אמון.",
+      "order": 2
+    },
+    {
+      "id": "sales-fundamentals.objections",
+      "subjectId": "sales-fundamentals",
+      "title": "טיפול בהתנגדויות",
+      "description": "זיהוי ההתנגדות האמיתית והבחנה בינה לבין מניעה ממשית.",
+      "order": 3
+    },
+    {
+      "id": "sales-fundamentals.closing",
+      "subjectId": "sales-fundamentals",
+      "title": "סגירת עסקה",
+      "description": "שאלות סגירה וזיהוי ההתנגדות האחרונה.",
+      "order": 4
+    }
+  ],
+  "questions": [
+    {
+      "id": "sales-fundamentals.objections.001",
+      "stem": "לקוח אומר: 'זה יקר מדי'. מה התגובה הנכונה ביותר?",
+      "options": [
+        "להסכים ולהציע הנחה מיידית",
+        "לשאול: 'יקר ביחס למה?' ולהבין את ההשוואה",
+        "להסביר שוב את כל היתרונות",
+        "לסיים את השיחה בנימוס"
+      ],
+      "correctIndex": 1,
+      "explanation": "שאלת הבהרה מאפשרת להבין את ההתנגדות האמיתית. 'יקר' הוא לעיתים קרובות ביטוי לחוסר הבנת הערך, ולא בעיית תקציב ממשית.",
+      "coachNote": "כשלקוח אומר 'יקר', הוא בעצם אומר 'לא הבנתי את הערך'. שאל שאלות לפני שאתה מגיב.",
+      "legalRefs": [],
+      "subjectId": "sales-fundamentals",
+      "topicId": "sales-fundamentals.objections",
+      "difficulty": "medium",
+      "tags": ["התנגדויות", "מחיר"],
+      "status": "published",
+      "source": { "importedFrom": "AppContext demo bank" },
+      "updatedAt": "2026-07-26"
+    },
+    {
+      "id": "sales-fundamentals.closing.001",
+      "stem": "מהי הטכניקה הנכונה לסגירת עסקה כשהלקוח מהסס?",
+      "options": [
+        "ליצור לחץ זמן מלאכותי",
+        "לשאול שאלת סגירה ישירה: 'מה מונע מאיתנו להתקדם היום?'",
+        "לתת ללקוח זמן ולחזור שבוע לאחר מכן",
+        "להוסיף בונוסים ללא בקשה"
+      ],
+      "correctIndex": 1,
+      "explanation": "שאלת סגירה ישירה חושפת את ההתנגדות האחרונה. ברגע שיודעים מה עוצר את הלקוח, אפשר לטפל בכך ספציפית.",
+      "coachNote": "הסגירה הטובה ביותר היא שאלה, לא הצהרה. שאל ישירות מה מונע את ההתקדמות.",
+      "legalRefs": [],
+      "subjectId": "sales-fundamentals",
+      "topicId": "sales-fundamentals.closing",
+      "difficulty": "hard",
+      "tags": ["סגירה"],
+      "status": "published",
+      "source": { "importedFrom": "AppContext demo bank" },
+      "updatedAt": "2026-07-26"
+    },
+    {
+      "id": "sales-fundamentals.discovery.001",
+      "stem": "לקוח חדש מגיע לפגישה. מה צריך לעשות בדקות הראשונות?",
+      "options": [
+        "להתחיל מיד בהצגת המוצר",
+        "לבנות rapport ולהבין את הצרכים לפני כל הצגה",
+        "לשאול מיד על התקציב",
+        "לספר על הצלחות קודמות עם לקוחות דומים"
+      ],
+      "correctIndex": 1,
+      "explanation": "בניית rapport ואיסוף מידע על הצרכים היא הבסיס לכל מכירה מוצלחת. לקוח שמרגיש מובן יהיה פתוח הרבה יותר.",
+      "coachNote": "",
+      "legalRefs": [],
+      "subjectId": "sales-fundamentals",
+      "topicId": "sales-fundamentals.discovery",
+      "difficulty": "easy",
+      "tags": ["פתיחת שיחה"],
+      "status": "published",
+      "source": { "importedFrom": "AppContext demo bank" },
+      "updatedAt": "2026-07-26"
+    },
+    {
+      "id": "sales-fundamentals.value.001",
+      "stem": "מה ההבדל בין 'feature' ל-'benefit' במכירות?",
+      "options": [
+        "אין הבדל, הם מילים נרדפות",
+        "Feature הוא מה שהמוצר עושה, Benefit הוא מה שהלקוח מרוויח",
+        "Feature הוא היתרון, Benefit הוא המחיר",
+        "Feature מתאים לעסקים, Benefit מתאים לפרטיים"
+      ],
+      "correctIndex": 1,
+      "explanation": "לקוחות קונים תוצאות, לא תכונות. 'מצלמה 48MP' היא feature. 'תצלם רגעים מושלמים שתשמור לנצח' הוא benefit.",
+      "coachNote": "",
+      "legalRefs": [],
+      "subjectId": "sales-fundamentals",
+      "topicId": "sales-fundamentals.value",
+      "difficulty": "easy",
+      "tags": ["הצגת ערך"],
+      "status": "published",
+      "source": { "importedFrom": "AppContext demo bank" },
+      "updatedAt": "2026-07-26"
+    },
+    {
+      "id": "sales-fundamentals.objections.002",
+      "stem": "לקוח אומר 'אני צריך לחשוב על זה'. מה עושים?",
+      "options": [
+        "אומרים 'בסדר, תתקשר כשתחליט'",
+        "שואלים 'מה בדיוק צריך לחשוב? אולי אני יכול לעזור עכשיו?'",
+        "מציעים הנחה מיידית כדי לסגור",
+        "שולחים חומר שיווקי בדוא\"ל"
+      ],
+      "correctIndex": 1,
+      "explanation": "'צריך לחשוב' כמעט תמיד אומר שיש התנגדות שלא הובעה. שאלה על מה בדיוק מצריך מחשבה היא הצעד הנכון.",
+      "coachNote": "",
+      "legalRefs": [],
+      "subjectId": "sales-fundamentals",
+      "topicId": "sales-fundamentals.objections",
+      "difficulty": "medium",
+      "tags": ["התנגדויות", "דחייה"],
+      "status": "published",
+      "source": { "importedFrom": "AppContext demo bank" },
+      "updatedAt": "2026-07-26"
+    },
+    {
+      "id": "sales-fundamentals.value.002",
+      "stem": "מה עדיף: לדבר על המחיר מוקדם בשיחה או מאוחר?",
+      "options": [
+        "מוקדם ככל האפשר, כדי לחסוך זמן",
+        "רק אחרי שהלקוח הבין את הערך המלא",
+        "תמיד בסוף, כהפתעה",
+        "אין חשיבות לתזמון"
+      ],
+      "correctIndex": 1,
+      "explanation": "מחיר ללא ערך הוא תמיד יקר. כשהלקוח מבין את הערך המלא, המחיר הופך להשקעה ולא להוצאה.",
+      "coachNote": "",
+      "legalRefs": [],
+      "subjectId": "sales-fundamentals",
+      "topicId": "sales-fundamentals.value",
+      "difficulty": "medium",
+      "tags": ["מחיר", "תזמון"],
+      "status": "published",
+      "source": { "importedFrom": "AppContext demo bank" },
+      "updatedAt": "2026-07-26"
+    },
+    {
+      "id": "sales-fundamentals.discovery.002",
+      "stem": "מהי שיטת SPIN Selling?",
+      "options": [
+        "Sell, Pitch, Influence, Negotiate",
+        "Situation, Problem, Implication, Need-payoff",
+        "Speed, Price, Innovation, Network",
+        "Survey, Plan, Implement, Notify"
+      ],
+      "correctIndex": 1,
+      "explanation": "SPIN היא שיטת שאלות: Situation (מצב), Problem (בעיה), Implication (השלכות), Need-payoff (ערך הפתרון). היא מובילה את הלקוח לגלות בעצמו את הצורך.",
+      "coachNote": "",
+      "legalRefs": [],
+      "subjectId": "sales-fundamentals",
+      "topicId": "sales-fundamentals.discovery",
+      "difficulty": "hard",
+      "tags": ["מתודולוגיה", "שאלות"],
+      "status": "published",
+      "source": { "importedFrom": "AppContext demo bank" },
+      "updatedAt": "2026-07-26"
+    },
+    {
+      "id": "sales-fundamentals.discovery.003",
+      "stem": "לקוח מתלונן על שירות קודם. מה עושים ראשון?",
+      "options": [
+        "מסבירים למה זה לא אשמתנו",
+        "מקשיבים, מכירים בבעיה, ומתנצלים כנה",
+        "מציעים פיצוי מיידי",
+        "מעבירים לנציג אחר"
+      ],
+      "correctIndex": 1,
+      "explanation": "לקוח כועס צריך קודם כל להרגיש שמיעה. הכרה בבעיה והתנצלות כנה מורידות את הטמפרטורה לפני שמציעים פתרון.",
+      "coachNote": "",
+      "legalRefs": [],
+      "subjectId": "sales-fundamentals",
+      "topicId": "sales-fundamentals.discovery",
+      "difficulty": "easy",
+      "tags": ["שירות", "הקשבה"],
+      "status": "published",
+      "source": { "importedFrom": "AppContext demo bank" },
+      "updatedAt": "2026-07-26"
+    },
+    {
+      "id": "sales-fundamentals.value.003",
+      "stem": "מה זה 'social proof' ואיך משתמשים בו?",
+      "options": [
+        "הוכחה שהמוצר עבד ברשתות חברתיות",
+        "שימוש בעדויות, סיפורי הצלחה ומספרים כדי לבנות אמון",
+        "מדיניות החזרות ברורה",
+        "הצגת תעודות ורישיונות"
+      ],
+      "correctIndex": 1,
+      "explanation": "Social proof מנצל את הנטייה האנושית ללמוד מאחרים. '500 עסקים כבר בחרו בנו' או 'לקוח X הגדיל מכירות ב-40%' הן דוגמאות חזקות.",
+      "coachNote": "",
+      "legalRefs": [],
+      "subjectId": "sales-fundamentals",
+      "topicId": "sales-fundamentals.value",
+      "difficulty": "medium",
+      "tags": ["אמון", "עדויות"],
+      "status": "published",
+      "source": { "importedFrom": "AppContext demo bank" },
+      "updatedAt": "2026-07-26"
+    },
+    {
+      "id": "sales-fundamentals.objections.003",
+      "stem": "מה ההבדל בין 'objection' ל-'condition' בתהליך מכירה?",
+      "options": [
+        "אין הבדל, שניהם מונעים מכירה",
+        "Objection ניתן לטיפול, Condition הוא מניעה אמיתית שאי אפשר לפתור",
+        "Objection הוא טכני, Condition הוא רגשי",
+        "Condition הוא זמני, Objection הוא קבוע"
+      ],
+      "correctIndex": 1,
+      "explanation": "Objection היא התנגדות שניתן לטפל בה ('יקר מדי' ← הצג ערך). Condition היא מניעה ממשית ('אין לי תקציב לחצי שנה' ← לא ניתן לסגור עכשיו).",
+      "coachNote": "",
+      "legalRefs": [],
+      "subjectId": "sales-fundamentals",
+      "topicId": "sales-fundamentals.objections",
+      "difficulty": "hard",
+      "tags": ["התנגדויות", "אבחון"],
+      "status": "published",
+      "source": { "importedFrom": "AppContext demo bank" },
+      "updatedAt": "2026-07-26"
+    }
+  ]
+}

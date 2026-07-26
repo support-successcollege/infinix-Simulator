@@ -1,0 +1,251 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-26T21:25:09.140Z",
+  "contentHash": "c11c2c5d8f8b1729",
+  "subjects": [
+    {
+      "subjectId": "ethics",
+      "title": "אתיקה מקצועית ודינים",
+      "icon": "⚖️",
+      "description": "כללי התנהגות מקצועית, חובות כלפי הלקוח והמגבלות החלות על בעל רישיון.",
+      "order": 10,
+      "topics": [
+        {
+          "topicId": "ethics.unassigned",
+          "title": "לא משויך",
+          "total": 0,
+          "byStatus": {
+            "draft": 0,
+            "review": 0,
+            "published": 0,
+            "archived": 0
+          },
+          "byDifficulty": {
+            "easy": 0,
+            "medium": 0,
+            "hard": 0
+          },
+          "explanationCoverage": 1,
+          "legalRefCoverage": 1
+        },
+        {
+          "topicId": "ethics.conflict",
+          "title": "ניגוד עניינים",
+          "total": 0,
+          "byStatus": {
+            "draft": 0,
+            "review": 0,
+            "published": 0,
+            "archived": 0
+          },
+          "byDifficulty": {
+            "easy": 0,
+            "medium": 0,
+            "hard": 0
+          },
+          "explanationCoverage": 1,
+          "legalRefCoverage": 1
+        },
+        {
+          "topicId": "ethics.disclosure",
+          "title": "חובת גילוי ונאמנות ללקוח",
+          "total": 0,
+          "byStatus": {
+            "draft": 0,
+            "review": 0,
+            "published": 0,
+            "archived": 0
+          },
+          "byDifficulty": {
+            "easy": 0,
+            "medium": 0,
+            "hard": 0
+          },
+          "explanationCoverage": 1,
+          "legalRefCoverage": 1
+        },
+        {
+          "topicId": "ethics.licensing",
+          "title": "רישוי, סמכויות ואיסורים",
+          "total": 0,
+          "byStatus": {
+            "draft": 0,
+            "review": 0,
+            "published": 0,
+            "archived": 0
+          },
+          "byDifficulty": {
+            "easy": 0,
+            "medium": 0,
+            "hard": 0
+          },
+          "explanationCoverage": 1,
+          "legalRefCoverage": 1
+        },
+        {
+          "topicId": "ethics.marketing",
+          "title": "שיווק, פרסום ותגמול",
+          "total": 0,
+          "byStatus": {
+            "draft": 0,
+            "review": 0,
+            "published": 0,
+            "archived": 0
+          },
+          "byDifficulty": {
+            "easy": 0,
+            "medium": 0,
+            "hard": 0
+          },
+          "explanationCoverage": 1,
+          "legalRefCoverage": 1
+        },
+        {
+          "topicId": "ethics.privacy",
+          "title": "סודיות ופרטיות",
+          "total": 0,
+          "byStatus": {
+            "draft": 0,
+            "review": 0,
+            "published": 0,
+            "archived": 0
+          },
+          "byDifficulty": {
+            "easy": 0,
+            "medium": 0,
+            "hard": 0
+          },
+          "explanationCoverage": 1,
+          "legalRefCoverage": 1
+        }
+      ],
+      "examReadiness": null,
+      "total": 0,
+      "byStatus": {
+        "draft": 0,
+        "review": 0,
+        "published": 0,
+        "archived": 0
+      },
+      "byDifficulty": {
+        "easy": 0,
+        "medium": 0,
+        "hard": 0
+      },
+      "explanationCoverage": 1,
+      "legalRefCoverage": 1
+    },
+    {
+      "subjectId": "sales-fundamentals",
+      "title": "יסודות המכירה",
+      "icon": "🎯",
+      "description": "טכניקות שיחת מכירה, טיפול בהתנגדויות והצגת ערך.",
+      "order": 90,
+      "topics": [
+        {
+          "topicId": "sales-fundamentals.discovery",
+          "title": "איתור צרכים ובניית אמון",
+          "total": 3,
+          "byStatus": {
+            "draft": 0,
+            "review": 0,
+            "published": 3,
+            "archived": 0
+          },
+          "byDifficulty": {
+            "easy": 2,
+            "medium": 0,
+            "hard": 1
+          },
+          "explanationCoverage": 1,
+          "legalRefCoverage": 0
+        },
+        {
+          "topicId": "sales-fundamentals.value",
+          "title": "הצגת ערך ותמחור",
+          "total": 3,
+          "byStatus": {
+            "draft": 0,
+            "review": 0,
+            "published": 3,
+            "archived": 0
+          },
+          "byDifficulty": {
+            "easy": 1,
+            "medium": 2,
+            "hard": 0
+          },
+          "explanationCoverage": 1,
+          "legalRefCoverage": 0
+        },
+        {
+          "topicId": "sales-fundamentals.objections",
+          "title": "טיפול בהתנגדויות",
+          "total": 3,
+          "byStatus": {
+            "draft": 0,
+            "review": 0,
+            "published": 3,
+            "archived": 0
+          },
+          "byDifficulty": {
+            "easy": 0,
+            "medium": 2,
+            "hard": 1
+          },
+          "explanationCoverage": 1,
+          "legalRefCoverage": 0
+        },
+        {
+          "topicId": "sales-fundamentals.closing",
+          "title": "סגירת עסקה",
+          "total": 1,
+          "byStatus": {
+            "draft": 0,
+            "review": 0,
+            "published": 1,
+            "archived": 0
+          },
+          "byDifficulty": {
+            "easy": 0,
+            "medium": 0,
+            "hard": 1
+          },
+          "explanationCoverage": 1,
+          "legalRefCoverage": 0
+        }
+      ],
+      "examReadiness": null,
+      "total": 10,
+      "byStatus": {
+        "draft": 0,
+        "review": 0,
+        "published": 10,
+        "archived": 0
+      },
+      "byDifficulty": {
+        "easy": 3,
+        "medium": 4,
+        "hard": 3
+      },
+      "explanationCoverage": 1,
+      "legalRefCoverage": 0
+    }
+  ],
+  "totals": {
+    "total": 10,
+    "byStatus": {
+      "draft": 0,
+      "review": 0,
+      "published": 10,
+      "archived": 0
+    },
+    "byDifficulty": {
+      "easy": 3,
+      "medium": 4,
+      "hard": 3
+    },
+    "explanationCoverage": 1,
+    "legalRefCoverage": 0
+  }
+}

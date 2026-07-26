@@ -157,7 +157,7 @@ export default function QuizScreen() {
             style={{ background: "rgba(255, 165, 0, 0.15)", color: "var(--primary)", border: "1px solid rgba(255, 165, 0, 0.25)" }}
           >
             <Zap size={10} />
-            {currentQuestion.arena}
+            {currentSession.arenaName}
           </span>
           {currentQuestion.difficulty && (
             <span
@@ -180,7 +180,7 @@ export default function QuizScreen() {
           style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border-strong)" }}
         >
           <p className="text-lg font-bold leading-relaxed" style={{ color: "var(--foreground)", fontFamily: "Heebo, sans-serif" }}>
-            {currentQuestion.text}
+            {currentQuestion.stem}
           </p>
         </div>
 

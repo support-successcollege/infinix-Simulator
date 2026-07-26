@@ -314,13 +314,7 @@ function Step2Arena({ arenas, allArenas, selectedId, search, setSearch, onSelect
   onSelect: (id: string, name: string) => void;
 }) {
   const maxQuestions = allArenas.reduce((m, a) => Math.max(m, a.questionCount), 0);
-  const visibleLabel = arenas.length === allArenas.length ? `${allArenas.length} זירות` : `${arenas.length} מתוך ${allArenas.length}`;
-
-  const difficultyLabel = (count: number) => {
-    if (count >= 80) return "גבוהה";
-    if (count >= 35) return "בינונית";
-    return "קלה";
-  };
+  const visibleLabel = arenas.length === allArenas.length ? `${allArenas.length} מקצועות` : `${arenas.length} מתוך ${allArenas.length}`;
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
@@ -378,7 +372,7 @@ function Step2Arena({ arenas, allArenas, selectedId, search, setSearch, onSelect
               <div className="text-xs mb-2" style={{ color: "var(--muted-foreground)" }}>{arena.summary}</div>
               <div className="flex items-center justify-between text-xs mt-3 pt-2 border-t" style={{ borderColor: "var(--tf-border)", color: "var(--muted-foreground)" }}>
                 <span>{arena.questionCount} שאלות</span>
-                <span>רמת קושי: {difficultyLabel(arena.questionCount)}</span>
+                <span>רמת קושי: {arena.difficultyLabel}</span>
               </div>
               {selectedId === arena.id && (
                 <div className="absolute top-2 right-2">

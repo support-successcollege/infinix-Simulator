@@ -5,12 +5,10 @@
 ## מה הוכן
 
 - ניתוב SPA עבר ל־Hash Router כדי למנוע 404 ברענון עמודים ב־Pages.
-- טעינת בנק השאלות עודכנה כך שתומכת ב־`BASE_URL` של Vite.
-- נוסף סקריפט סנכרון:
-  - מקור: `../question_bank_infinitycloser.json`
-  - יעד: `client/public/question_bank_infinitycloser.json`
+- התוכן נארז לתוך ה־bundle (ראה "ניהול תוכן" למטה) ולא נטען ב־fetch, כך שאין תלות ב־`BASE_URL`.
 - נוספו פקודות:
-  - `pnpm sync:question-bank`
+  - `pnpm build:content`
+  - `pnpm import:legacy`
   - `pnpm build:pages`
   - `pnpm preview:pages`
 - `vite.config.ts` תומך ב־`VITE_BASE_PATH`.
@@ -40,6 +38,29 @@ pnpm build:pages
 
 - `dist/public`
 
-## הערה
+## ניהול תוכן
 
-לפני build מומלץ לוודא ש־`question_bank_infinitycloser.json` קיים בשורש הפרויקט.
+מקור האמת לתוכן הוא `client/src/content/subjects/*.json`, מגורס ב־git.
+
+```bash
+pnpm build:content     # מאמת את התוכן ומייצר manifest + content-report.md
+```
+
+האימות **מפיל את ה־build** על תוכן לא תקין: `correctIndex` מחוץ לטווח, מזהה כפול,
+נושא לא מוכר, נוסח כפול, או שאלה בסטטוס `published` ללא הסבר או הפניה לחוק.
+`pnpm build:pages` מריץ אותו אוטומטית.
+
+ייבוא בנק שאלות קיים בפורמט ETHIC_MERGED:
+
+```bash
+pnpm import:legacy <path/to/bank.json> --subject ethics
+```
+
+הייבוא מסמן כל שאלה כ־`review` ומשייך אותה ל־`<subject>.unassigned`. יש לשייך
+נושא, לכתוב הסבר ולהוסיף מקור לפני שמשנים ל־`published`.
+
+## הגדרה ראשונית
+
+אין חשבון מובנה. בכניסה הראשונה במכשיר, המסך מבקש ליצור את חשבון ההנהלה.
+החשבון נשמר ב־localStorage של אותו דפדפן בלבד — אין שרת, ולכן חשבונות ותוצאות
+אינם משותפים בין מכשירים.
