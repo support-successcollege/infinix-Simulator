@@ -5,10 +5,10 @@
 
 import { useRef, type ChangeEventHandler } from "react";
 import { useApp } from "@/contexts/AppContext";
-import { BookOpen, Target, TrendingUp, Clock, Award, ChevronLeft, Upload, Play } from "lucide-react";
+import { BookOpen, Target, TrendingUp, Clock, Award, ChevronLeft, Upload, Play, FlaskConical, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
-const HERO_BG = "https://d2xsxph8kpxj0f.cloudfront.net/310519663547397718/Pvji6kDRrPHhdwxpb2BJTp/hero-bg-oGqfpceyfXMJ44A5hLQiGu.webp";
+import HERO_BG from "@/assets/hero-bg.webp";
 
 export default function HubScreen() {
   const {
@@ -19,6 +19,9 @@ export default function HubScreen() {
     importQuestionBank,
     clearImportedQuestionBank,
     questionBankLoaded,
+    isDemoContent,
+    weeklyProgress,
+    storageAvailable,
     arenas,
   } = useApp();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -28,7 +31,6 @@ export default function HubScreen() {
     ? Math.round(sessions.reduce((sum, s) => sum + s.score, 0) / sessions.length)
     : 0;
 
-  const weeklyProgress = user?.weeklyProgress ?? 0;
   const weeklyGoal = user?.weeklyGoal ?? 5;
   const weeklyPct = Math.min(100, Math.round((weeklyProgress / weeklyGoal) * 100));
 
@@ -107,6 +109,53 @@ export default function HubScreen() {
 
       {/* Content */}
       <div className="p-4 flex flex-col gap-4">
+
+        {/* Demo-content notice — the arenas and questions below are
+            placeholders until a real question bank is imported. */}
+        {isDemoContent && (
+          <div
+            role="status"
+            className="rounded-xl p-4 flex items-start gap-3"
+            style={{
+              background: "rgba(255, 165, 0, 0.12)",
+              border: "1px solid rgba(255, 165, 0, 0.4)",
+            }}
+          >
+            <FlaskConical size={18} style={{ color: "var(--primary)", flexShrink: 0, marginTop: 2 }} />
+            <div className="flex-1">
+              <div className="text-sm font-bold" style={{ color: "var(--primary)" }}>
+                תוכן הדגמה
+              </div>
+              <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
+                הזירות והשאלות המוצגות הן דוגמאות בלבד ואינן חומר לימוד אמיתי.
+                העלה מאגר שאלות כדי להחליף אותן.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Storage unavailable — nothing will be remembered. */}
+        {!storageAvailable && (
+          <div
+            role="alert"
+            className="rounded-xl p-4 flex items-start gap-3"
+            style={{
+              background: "rgba(220, 38, 38, 0.12)",
+              border: "1px solid rgba(220, 38, 38, 0.4)",
+            }}
+          >
+            <AlertTriangle size={18} style={{ color: "var(--destructive)", flexShrink: 0, marginTop: 2 }} />
+            <div className="flex-1">
+              <div className="text-sm font-bold" style={{ color: "var(--destructive)" }}>
+                אחסון מקומי חסום
+              </div>
+              <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
+                הדפדפן חוסם שמירה מקומית, ולכן היסטוריית האימונים לא תישמר בין ביקורים.
+                נסה לצאת ממצב גלישה פרטית או לאפשר עוגיות.
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Quick start CTA */}
         <div

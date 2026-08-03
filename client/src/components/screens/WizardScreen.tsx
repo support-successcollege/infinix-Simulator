@@ -6,9 +6,10 @@
 
 import { useState, useMemo } from "react";
 import { useApp, TrainingMode } from "@/contexts/AppContext";
-import { CheckCircle2, ChevronRight, ChevronLeft, Search, Zap, Clock, Hash, Play, X } from "lucide-react";
+import { CheckCircle2, ChevronRight, ChevronLeft, Search, Zap, Clock, Hash, Play, X, FlaskConical } from "lucide-react";
+import { toast } from "sonner";
 
-const ARENA_BG = "https://d2xsxph8kpxj0f.cloudfront.net/310519663547397718/Pvji6kDRrPHhdwxpb2BJTp/arena-bg-Wo2sYsRxfQ9rcbWDEFnJu8.webp";
+import ARENA_BG from "@/assets/arena-bg.webp";
 
 const TRAINING_MODES: { id: TrainingMode; label: string; desc: string; icon: string }[] = [
   { id: "full", label: "מבחן מלא", desc: "מבחן מקיף עם כל הנושאים", icon: "🎯" },
@@ -26,7 +27,7 @@ const TIME_OPTIONS = [
 ];
 
 export default function WizardScreen() {
-  const { trainingConfig, setTrainingConfig, arenas, setScreen, startQuiz } = useApp();
+  const { trainingConfig, setTrainingConfig, arenas, setScreen, startQuiz, isDemoContent } = useApp();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [arenaSearch, setArenaSearch] = useState("");
 
@@ -41,7 +42,8 @@ export default function WizardScreen() {
   const canProceedToConfirm = !!trainingConfig.arenaId;
 
   const handleStart = () => {
-    startQuiz();
+    const result = startQuiz();
+    if (!result.ok) toast.error(result.error || "לא ניתן להתחיל את האימון");
   };
 
   const stepLabels = ["הגדרות", "זירה", "אישור"];
@@ -116,7 +118,9 @@ export default function WizardScreen() {
             onSelect={(id, name) => setTrainingConfig({ arenaId: id, arenaName: name })}
           />
         )}
-        {step === 3 && <Step3Confirm config={trainingConfig} arenas={arenas} />}
+        {step === 3 && (
+          <Step3Confirm config={trainingConfig} arenas={arenas} isDemoContent={isDemoContent} />
+        )}
       </div>
 
       {/* Footer navigation */}
@@ -314,6 +318,11 @@ function Step2Arena({ arenas, allArenas, selectedId, search, setSearch, onSelect
   onSelect: (id: string, name: string) => void;
 }) {
   const maxQuestions = allArenas.reduce((m, a) => Math.max(m, a.questionCount), 0);
+  // "Leading" only means something if one arena actually leads. When
+  // every arena holds the same number of questions the badge was
+  // rendering on all of them at once.
+  const leaderCount = allArenas.filter(a => a.questionCount === maxQuestions).length;
+  const hasSoleLeader = maxQuestions > 0 && leaderCount === 1;
   const visibleLabel = arenas.length === allArenas.length ? `${allArenas.length} זירות` : `${arenas.length} מתוך ${allArenas.length}`;
 
   const difficultyLabel = (count: number) => {
@@ -368,7 +377,7 @@ function Step2Arena({ arenas, allArenas, selectedId, search, setSearch, onSelect
               onClick={() => onSelect(arena.id, arena.name)}
               className={`arena-card text-right ${selectedId === arena.id ? "selected" : ""}`}
             >
-              {arena.questionCount === maxQuestions && (
+              {hasSoleLeader && arena.questionCount === maxQuestions && (
                 <span className="badge-pill absolute top-2 left-2" style={{ background: "rgba(34, 197, 94, 0.2)", color: "var(--success)" }}>
                   מוביל
                 </span>
@@ -401,13 +410,21 @@ function Step2Arena({ arenas, allArenas, selectedId, search, setSearch, onSelect
 
 // ── Step 3: Confirm ───────────────────────────────────────────
 
-function Step3Confirm({ config, arenas }: {
+function Step3Confirm({ config, arenas, isDemoContent }: {
   config: ReturnType<typeof useApp>["trainingConfig"];
   arenas: ReturnType<typeof useApp>["arenas"];
+  isDemoContent: boolean;
 }) {
   const arena = arenas.find(a => a.id === config.arenaId);
   const modeLabel = TRAINING_MODES.find(m => m.id === config.mode)?.label ?? config.mode;
   const timeLabel = TIME_OPTIONS.find(t => t.value === config.timePerQuestion)?.label ?? `${config.timePerQuestion}שנ'`;
+
+  // Questions are never repeated to pad a short pool, so a request for
+  // more than the arena holds simply yields a shorter quiz. Say so up
+  // front rather than surprising the trainee mid-session.
+  const available = arena?.questionCount ?? 0;
+  const actualCount = available > 0 ? Math.min(config.questionCount, available) : config.questionCount;
+  const isTrimmed = available > 0 && config.questionCount > available;
 
   return (
     <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
@@ -422,10 +439,10 @@ function Step3Confirm({ config, arenas }: {
       <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid var(--tf-border)" }}>
         {[
           { label: "מצב אימון", value: modeLabel },
-          { label: "כמות שאלות", value: `${config.questionCount} שאלות` },
+          { label: "כמות שאלות", value: `${actualCount} שאלות` },
           { label: "זמן לשאלה", value: timeLabel },
           { label: "זירה", value: arena?.name ?? config.arenaName },
-          { label: "שאלות במאגר", value: `${arena?.questionCount ?? "—"} שאלות` },
+          { label: "שאלות במאגר", value: `${available || "—"} שאלות` },
         ].map((row, i) => (
           <div
             key={row.label}
@@ -441,11 +458,38 @@ function Step3Confirm({ config, arenas }: {
         ))}
       </div>
 
+      {isDemoContent && (
+        <div
+          role="status"
+          className="rounded-xl p-4 flex items-start gap-3"
+          style={{ background: "rgba(255, 165, 0, 0.12)", border: "1px solid rgba(255, 165, 0, 0.4)" }}
+        >
+          <FlaskConical size={18} style={{ color: "var(--primary)", flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
+          <p className="text-sm" style={{ color: "var(--foreground)" }}>
+            <strong>תוכן הדגמה</strong> — האימון ירוץ על שאלות דוגמה, לא על חומר לימוד אמיתי.
+          </p>
+        </div>
+      )}
+
+      {isTrimmed && (
+        <div
+          role="status"
+          className="rounded-xl p-4 flex items-start gap-3"
+          style={{ background: "rgba(183, 146, 79, 0.12)", border: "1px solid rgba(183, 146, 79, 0.4)" }}
+        >
+          <Hash size={18} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
+          <p className="text-sm" style={{ color: "var(--foreground)" }}>
+            בזירה הזו יש {available} שאלות בלבד, ולכן האימון יכלול {actualCount} שאלות ולא{" "}
+            {config.questionCount}. שאלות לא חוזרות על עצמן באותו מבחן.
+          </p>
+        </div>
+      )}
+
       <div
         className="rounded-xl p-4 flex items-start gap-3"
         style={{ background: "rgba(255, 165, 0, 0.1)", border: "1px solid rgba(255, 165, 0, 0.25)" }}
       >
-        <Zap size={18} style={{ color: "var(--primary)", flexShrink: 0, marginTop: 2 }} />
+        <Zap size={18} style={{ color: "var(--primary)", flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
         <p className="text-sm" style={{ color: "var(--foreground)" }}>
           לחץ <strong>התחל מבחן</strong> כדי להתחיל. לאחר תחילת המבחן לא ניתן לשנות הגדרות.
         </p>

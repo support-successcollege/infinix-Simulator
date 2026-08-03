@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useApp, type TrainingMode } from "@/contexts/AppContext";
-import { Save, RotateCcw, Shield, SlidersHorizontal, UserRound } from "lucide-react";
+import { Save, RotateCcw, Shield, SlidersHorizontal, UserRound, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 
 const MODE_OPTIONS: { value: TrainingMode; label: string }[] = [
@@ -13,7 +13,12 @@ const COUNT_OPTIONS = [5, 10, 15, 20, 30];
 const TIME_OPTIONS = [0, 30, 60, 90, 120];
 
 export default function SettingsScreen() {
-  const { user, trainingConfig, setTrainingConfig, updateUserProfile, resetSessions } = useApp();
+  const { user, trainingConfig, setTrainingConfig, updateUserProfile, resetSessions, changePassword } = useApp();
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [nextPassword, setNextPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   const [name, setName] = useState(user?.name || "");
   const [weeklyGoal, setWeeklyGoal] = useState<number>(user?.weeklyGoal || 5);
@@ -36,6 +41,26 @@ export default function SettingsScreen() {
     updateUserProfile({ name: name.trim() || user?.name || "סטודנט", weeklyGoal: safeGoal });
     setTrainingConfig({ mode, questionCount, timePerQuestion });
     toast.success("ההגדרות נשמרו בהצלחה");
+  };
+
+  const submitPasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (nextPassword !== confirmPassword) {
+      toast.error("הסיסמאות אינן תואמות");
+      return;
+    }
+    setIsChangingPassword(true);
+    try {
+      await changePassword(currentPassword, nextPassword);
+      setCurrentPassword("");
+      setNextPassword("");
+      setConfirmPassword("");
+      toast.success("הסיסמה הוחלפה בהצלחה");
+    } catch (err) {
+      toast.error((err as Error)?.message || "החלפת הסיסמה נכשלה");
+    } finally {
+      setIsChangingPassword(false);
+    }
   };
 
   const restoreDefaults = () => {
@@ -109,6 +134,69 @@ export default function SettingsScreen() {
               </select>
             </label>
           </div>
+        </section>
+
+        <section className="rounded-2xl p-4" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
+          <h3 className="font-bold text-sm mb-3" style={{ color: "var(--foreground)" }}>
+            <KeyRound size={14} className="inline ml-1" /> החלפת סיסמה
+          </h3>
+          <form onSubmit={submitPasswordChange} className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <label className="text-sm">
+              <span style={{ color: "var(--muted-foreground)" }}>סיסמה נוכחית</span>
+              <input
+                className="tf-input mt-1"
+                type="password"
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={e => setCurrentPassword(e.target.value)}
+                style={{ direction: "ltr", textAlign: "left" }}
+              />
+            </label>
+            <label className="text-sm">
+              <span style={{ color: "var(--muted-foreground)" }}>סיסמה חדשה</span>
+              <input
+                className="tf-input mt-1"
+                type="password"
+                autoComplete="new-password"
+                value={nextPassword}
+                onChange={e => setNextPassword(e.target.value)}
+                style={{ direction: "ltr", textAlign: "left" }}
+              />
+            </label>
+            <label className="text-sm">
+              <span style={{ color: "var(--muted-foreground)" }}>אימות סיסמה</span>
+              <input
+                className="tf-input mt-1"
+                type="password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                style={{ direction: "ltr", textAlign: "left" }}
+              />
+            </label>
+            <div className="md:col-span-3 flex items-center gap-3 flex-wrap">
+              <button
+                type="submit"
+                disabled={isChangingPassword || !currentPassword || !nextPassword}
+                className="px-4 py-2 rounded-xl text-sm font-bold"
+                style={{
+                  background:
+                    isChangingPassword || !currentPassword || !nextPassword
+                      ? "var(--muted)"
+                      : "var(--primary)",
+                  color:
+                    isChangingPassword || !currentPassword || !nextPassword
+                      ? "var(--muted-foreground)"
+                      : "var(--primary-foreground)",
+                }}
+              >
+                {isChangingPassword ? "שומר..." : "החלף סיסמה"}
+              </button>
+              <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+                לפחות 8 תווים, הכוללים אות אחת וספרה אחת.
+              </span>
+            </div>
+          </form>
         </section>
 
         <section className="rounded-2xl p-4" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>

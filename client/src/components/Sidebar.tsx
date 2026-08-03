@@ -44,7 +44,7 @@ export default function Sidebar() {
     >
       {/* Logo */}
       <div className={`flex items-center gap-3 mb-6 ${expanded ? "w-full px-1" : "justify-center"}`}>
-        <img src={brandLogo} alt="INFINIX" className="h-8 w-auto flex-shrink-0" />
+        <img src={brandLogo} alt="INFINIX" className="brand-logo h-8 w-auto flex-shrink-0" />
         {expanded && (
           <div className="overflow-hidden">
             <div className="font-black text-sm leading-tight" style={{ color: "var(--foreground)", fontFamily: "Heebo, sans-serif" }}>

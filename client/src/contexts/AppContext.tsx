@@ -1,430 +1,148 @@
 /* ============================================================
    AppContext — InfinityCloser Global State
    Manages: auth, current screen, training config, quiz state
+
+   Persistence note: this app has no server. Accounts, history and
+   preferences all live in the visitor's own localStorage, which
+   means they are per-browser and per-device. See docs/SECURITY.md
+   for what that does and does not guarantee.
    ============================================================ */
 
-import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
-// ── Types ──────────────────────────────────────────────────────
+import {
+  createCredential,
+  isCryptoAvailable,
+  validatePasswordStrength,
+  verifyPassword,
+} from "@/lib/auth";
+import { DEMO_ARENAS, getDemoQuestions } from "@/lib/demoContent";
+import {
+  buildArenas,
+  calculateScore,
+  parseAnyQuestionBank,
+  pickQuestions,
+  toQuizQuestions,
+} from "@/lib/questionBank";
+import { STORAGE_KEYS, isStorageAvailable, readJson, removeKey, writeJson } from "@/lib/storage";
+import type {
+  Arena,
+  AuthUserAccount,
+  PublicAuthUser,
+  Question,
+  QuestionBankData,
+  QuizAnswer,
+  QuizSession,
+  Screen,
+  TrainingConfig,
+  User,
+  UserRole,
+} from "@/types/app";
 
-export type Screen =
-  | "hub"
-  | "wizard"
-  | "quiz"
-  | "results"
-  | "profile"
-  | "manager"
-  | "settings";
+export type {
+  Arena,
+  Question,
+  QuestionBankCategory,
+  QuestionBankData,
+  QuestionBankEntry,
+  QuizAnswer,
+  QuizSession,
+  Screen,
+  TrainingConfig,
+  TrainingMode,
+  User,
+} from "@/types/app";
 
-export type TrainingMode = "full" | "quick" | "mistakes";
+// ── Bootstrap admin ────────────────────────────────────────────
+// Sourced from build-time env so the credential is not committed.
+// On a static build these values still end up inside the JS bundle
+// — the real protection is that `mustChangePassword` forces this
+// password to be rotated the first time it is used.
+const BOOTSTRAP_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || "support@successcollege.co.il")
+  .trim()
+  .toLowerCase();
+const BOOTSTRAP_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "infinix-setup-2024";
 
-export interface TrainingConfig {
-  mode: TrainingMode;
-  questionCount: number;
-  timePerQuestion: number; // seconds
-  arenaId: string | null;
-  arenaName: string;
-}
-
-export interface Question {
-  id: string;
-  text: string;
-  options: string[];
-  correctIndex: number;
-  explanation: string;
-  coach?: string;
-  arena: string;
-  difficulty?: "easy" | "medium" | "hard";
-}
-
-export interface Arena {
-  id: string;
-  name: string;
-  icon: string;
-  questionCount: number;
-  category: string;
-  summary: string;
-}
-
-export interface QuizAnswer {
-  questionId: string;
-  selectedIndex: number;
-  isCorrect: boolean;
-  timeSpent: number;
-}
-
-export interface QuizSession {
-  id: string;
-  arenaName: string;
-  mode: TrainingMode;
-  questions: Question[];
-  answers: QuizAnswer[];
-  startTime: Date;
-  endTime?: Date;
-  score: number;
-}
-
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: "trainee" | "manager";
-  avatar?: string;
-  joinDate: Date;
-  totalSessions: number;
-  avgScore: number;
-  weeklyGoal: number;
-  weeklyProgress: number;
-}
-
-export interface QuestionBankEntry {
-  id?: string;
-  question?: string;
-  options?: string[];
-  correctIndex?: number;
-  explanation?: string;
-  coachNote?: string;
-  difficulty?: "easy" | "medium" | "hard" | string;
-  status?: string;
-}
-
-export interface QuestionBankCategory {
-  icon?: string;
-  product?: string;
-  nextStep?: string;
-  painPoints?: string[];
-  questions?: QuestionBankEntry[];
-}
-
-export interface QuestionBankData {
-  categories?: Record<string, QuestionBankCategory>;
-}
-
-interface AuthUserAccount {
-  id: string;
-  name: string;
-  email: string;
-  password: string;
-  role: "trainee" | "manager";
-}
-
-const HEBREW_OPTION_ORDER = ["א", "ב", "ג", "ד", "ה", "ו"];
-
-// ── Demo data ──────────────────────────────────────────────────
-
-const DEMO_ARENAS: Arena[] = [
-  { id: "real-estate", name: "נדל\"ן", icon: "🏠", questionCount: 45, category: "נכסים", summary: "שיחות מכירה לרוכשים ומשקיעים." },
-  { id: "insurance", name: "ביטוח", icon: "🛡️", questionCount: 38, category: "פיננסים", summary: "ניהול התנגדויות סביב כיסוי ועלות." },
-  { id: "telecom", name: "תקשורת", icon: "📱", questionCount: 52, category: "טכנולוגיה", summary: "מכירת חבילות ושימור לקוחות." },
-  { id: "banking", name: "בנקאות", icon: "🏦", questionCount: 41, category: "פיננסים", summary: "אמון, סיכונים ותהליך אישור." },
-  { id: "automotive", name: "רכב", icon: "🚗", questionCount: 36, category: "רכב", summary: "סגירת עסקאות רכב ומימון." },
-  { id: "software", name: "תוכנה B2B", icon: "💻", questionCount: 60, category: "טכנולוגיה", summary: "ROI, הטמעה ומולטי-סטייקהולדר." },
-  { id: "retail", name: "קמעונאות", icon: "🛍️", questionCount: 29, category: "מסחר", summary: "חוויית לקוח והגדלת סל." },
-  { id: "pharma", name: "פרמצבטיקה", icon: "💊", questionCount: 33, category: "בריאות", summary: "רגולציה, בטיחות וערך קליני." },
-  { id: "energy", name: "אנרגיה", icon: "⚡", questionCount: 27, category: "תשתיות", summary: "חיסכון, תפעול וסיכוני מעבר." },
-  { id: "education", name: "חינוך", icon: "📚", questionCount: 31, category: "שירותים", summary: "מכירת מסלולי לימוד והתחייבות." },
-  { id: "hospitality", name: "אירוח ותיירות", icon: "🏨", questionCount: 24, category: "שירותים", summary: "שדרוגים, חוויית אורח ומחיר." },
-  { id: "fintech", name: "פינטק", icon: "💳", questionCount: 44, category: "פיננסים", summary: "חדשנות פיננסית וניהול סיכונים." },
-];
-
-const QUESTION_BANK_STORAGE_KEY = "ic_question_bank_v1";
-const AUTH_USERS_STORAGE_KEY = "ic_auth_users_v1";
-const ADMIN_EMAIL = "support@successcollege.co.il";
-const ADMIN_PASSWORD = "123456";
-
-function getDefaultAuthUsers(): AuthUserAccount[] {
-  return [
-    {
-      id: "u-admin",
-      name: "Support Admin",
-      email: ADMIN_EMAIL,
-      password: ADMIN_PASSWORD,
-      role: "manager",
-    },
-  ];
-}
-
-function normalizeDifficulty(v?: string): Question["difficulty"] {
-  if (!v) return undefined;
-  const key = String(v).toLowerCase();
-  if (key.includes("easy") || key.includes("קל")) return "easy";
-  if (key.includes("hard") || key.includes("קשה")) return "hard";
-  if (key.includes("medium") || key.includes("בינ")) return "medium";
-  return undefined;
-}
-
-function buildArenaSummary(meta?: QuestionBankCategory): string {
-  if (!meta) return "אימון סימולציה מותאם זירה.";
-  const pains = Array.isArray(meta.painPoints) ? meta.painPoints.filter(Boolean) : [];
-  if (pains.length > 0) return `תרגול התנגדויות סביב ${pains.slice(0, 2).join(" ו")}.`;
-  if (meta.product && meta.nextStep) return `מכירת ${meta.product} עם דגש על ${meta.nextStep}.`;
-  return "אימון סימולציה מותאם זירה.";
-}
-
-function parseQuestionBank(input: unknown): QuestionBankData | null {
-  if (!input || typeof input !== "object") return null;
-  const data = input as QuestionBankData;
-  if (!data.categories || typeof data.categories !== "object") return null;
-  return data;
-}
-
-function parseLegacyMergedExamSchema(input: unknown): QuestionBankData | null {
-  if (!input || typeof input !== "object") return null;
-  const data = input as {
-    subject?: string;
-    exams?: Array<{
-      id?: string;
-      examPeriod?: string;
-      note?: string;
-      questions?: Array<{
-        number?: number;
-        stem?: string;
-        options?: Record<string, string> | string[];
-        correctAnswer?: string;
-      }>;
-    }>;
-  };
-  if (!Array.isArray(data.exams) || data.exams.length === 0) return null;
-
-  const mergedQuestions: QuestionBankEntry[] = [];
-  data.exams.forEach((exam, examIdx) => {
-    const questions = (exam.questions || [])
-      .map((q, qIdx): QuestionBankEntry | null => {
-        const stem = String(q.stem || "").trim();
-        if (!stem) return null;
-
-        const rawOptions = q.options;
-        let options: string[] = [];
-        let orderedKeys: string[] = [];
-
-        if (Array.isArray(rawOptions)) {
-          options = rawOptions.map(o => String(o || "").trim()).filter(Boolean);
-          orderedKeys = options.map((_, i) => String(i));
-        } else if (rawOptions && typeof rawOptions === "object") {
-          const entries = Object.entries(rawOptions as Record<string, string>)
-            .sort((a, b) => {
-              const ai = HEBREW_OPTION_ORDER.indexOf(a[0]);
-              const bi = HEBREW_OPTION_ORDER.indexOf(b[0]);
-              if (ai === -1 && bi === -1) return a[0].localeCompare(b[0], "he");
-              if (ai === -1) return 1;
-              if (bi === -1) return -1;
-              return ai - bi;
-            });
-          orderedKeys = entries.map(([k]) => k);
-          options = entries.map(([, v]) => String(v || "").trim()).filter(Boolean);
-        }
-
-        if (options.length < 2) return null;
-
-        let correctIndex = 0;
-        const answerKey = String(q.correctAnswer || "").trim();
-        if (answerKey) {
-          const byKey = orderedKeys.indexOf(answerKey);
-          correctIndex = byKey >= 0 ? byKey : 0;
-        }
-        correctIndex = Math.max(0, Math.min(options.length - 1, correctIndex));
-
-        const baseId = String(exam.id || `exam-${examIdx + 1}`);
-        const qNumber = Number(q.number) || qIdx + 1;
-        return {
-          id: `${baseId}-${String(qNumber).padStart(3, "0")}`,
-          question: stem,
-          options,
-          correctIndex,
-          difficulty: "medium",
-          status: answerKey ? "active" : "draft",
-          explanation: "",
-          coachNote: "",
-        };
-      })
-      .filter((q): q is QuestionBankEntry => q !== null);
-    mergedQuestions.push(...questions);
-  });
-
-  const categories: Record<string, QuestionBankCategory> = {
-    אתיקה: {
-      icon: "📘",
-      product: String(data.subject || "בנק מבחנים"),
-      nextStep: "פתרון מבחן מלא",
-      painPoints: ["דיוק משפטי", "ניהול זמן בבחינה", "בחירה בין תשובות דומות"],
-      questions: mergedQuestions,
-    },
-  };
-
-  return { categories };
-}
-
-function shuffle<T>(arr: T[]): T[] {
-  const copy = arr.slice();
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
-}
-
-function pickQuestions<T>(pool: T[], count: number): T[] {
-  if (pool.length === 0 || count <= 0) return [];
-  if (pool.length >= count) return shuffle(pool).slice(0, count);
-  const shuffled = shuffle(pool);
-  const out: T[] = [];
-  while (out.length < count) {
-    out.push(shuffled[out.length % shuffled.length]);
-  }
-  return out;
-}
-
-const generateQuestions = (arenaId: string, arenaName: string, count: number): Question[] => {
-  const questionBank: Record<string, Question[]> = {
-    default: [
-      {
-        id: "q1", text: "לקוח אומר: 'זה יקר מדי'. מה התגובה הנכונה ביותר?",
-        options: [
-          "להסכים ולהציע הנחה מיידית",
-          "לשאול: 'יקר ביחס למה?' ולהבין את ההשוואה",
-          "להסביר שוב את כל היתרונות",
-          "לסיים את השיחה בנימוס"
-        ],
-        correctIndex: 1,
-        explanation: "שאלת הבהרה מאפשרת לנו להבין את ההתנגדות האמיתית. 'יקר' הוא לעיתים קרובות ביטוי לחוסר הבנת הערך, לא בעיית תקציב אמיתית.",
-        coach: "כשלקוח אומר 'יקר', הוא בעצם אומר 'לא הבנתי את הערך'. שאל שאלות לפני שאתה מגיב.",
-        arena: arenaName, difficulty: "medium"
-      },
-      {
-        id: "q2", text: "מהי הטכניקה הנכונה לסגירת עסקה כשהלקוח מהסס?",
-        options: [
-          "ליצור לחץ זמן מלאכותי",
-          "לשאול שאלת סגירה ישירה: 'מה מונע מאיתנו להתקדם היום?'",
-          "לתת ללקוח זמן ולחזור שבוע לאחר מכן",
-          "להוסיף בונוסים ללא בקשה"
-        ],
-        correctIndex: 1,
-        explanation: "שאלת סגירה ישירה חושפת את ההתנגדות האחרונה. ברגע שיודעים מה עוצר את הלקוח, אפשר לטפל בזה ספציפית.",
-        coach: "הסגירה הטובה ביותר היא שאלה, לא הצהרה. שאל ישירות מה מונע את ההתקדמות.",
-        arena: arenaName, difficulty: "hard"
-      },
-      {
-        id: "q3", text: "לקוח חדש מגיע לפגישה. מה צריך לעשות בדקות הראשונות?",
-        options: [
-          "להתחיל מיד בהצגת המוצר",
-          "לבנות rapport ולהבין את הצרכים לפני כל הצגה",
-          "לשאול מיד על התקציב",
-          "לספר על הצלחות קודמות עם לקוחות דומים"
-        ],
-        correctIndex: 1,
-        explanation: "בניית rapport ואיסוף מידע על הצרכים היא הבסיס לכל מכירה מוצלחת. לקוח שמרגיש מובן יהיה פתוח הרבה יותר.",
-        arena: arenaName, difficulty: "easy"
-      },
-      {
-        id: "q4", text: "מה ההבדל בין 'feature' ל-'benefit' במכירות?",
-        options: [
-          "אין הבדל, הם מילים נרדפות",
-          "Feature הוא מה שהמוצר עושה, Benefit הוא מה שהלקוח מרוויח",
-          "Feature הוא היתרון, Benefit הוא המחיר",
-          "Feature מתאים לעסקים, Benefit מתאים לפרטיים"
-        ],
-        correctIndex: 1,
-        explanation: "לקוחות קונים תוצאות, לא תכונות. 'מצלמה 48MP' היא feature. 'תצלם רגעים מושלמים שתשמור לנצח' הוא benefit.",
-        arena: arenaName, difficulty: "easy"
-      },
-      {
-        id: "q5", text: "לקוח אומר 'אני צריך לחשוב על זה'. מה עושים?",
-        options: [
-          "אומרים 'בסדר, תתקשר כשתחליט'",
-          "שואלים 'מה בדיוק צריך לחשוב? אולי אני יכול לעזור עכשיו?'",
-          "מציעים הנחה מיידית כדי לסגור",
-          "שולחים חומר שיווקי בדוא\"ל"
-        ],
-        correctIndex: 1,
-        explanation: "'צריך לחשוב' כמעט תמיד אומר שיש התנגדות שלא הובעה. שאל מה בדיוק מצריך מחשבה — זה הצעד הנכון.",
-        arena: arenaName, difficulty: "medium"
-      },
-      {
-        id: "q6", text: "מה עדיף: לדבר על המחיר מוקדם בשיחה או מאוחר?",
-        options: [
-          "מוקדם ככל האפשר, כדי לחסוך זמן",
-          "רק אחרי שהלקוח הבין את הערך המלא",
-          "תמיד בסוף, כהפתעה",
-          "אין חשיבות לתזמון"
-        ],
-        correctIndex: 1,
-        explanation: "מחיר ללא ערך הוא תמיד יקר. כשהלקוח מבין את הערך המלא, המחיר הופך להשקעה ולא להוצאה.",
-        arena: arenaName, difficulty: "medium"
-      },
-      {
-        id: "q7", text: "מהי שיטת SPIN Selling?",
-        options: [
-          "Sell, Pitch, Influence, Negotiate",
-          "Situation, Problem, Implication, Need-payoff",
-          "Speed, Price, Innovation, Network",
-          "Survey, Plan, Implement, Notify"
-        ],
-        correctIndex: 1,
-        explanation: "SPIN היא שיטת שאלות: Situation (מצב), Problem (בעיה), Implication (השלכות), Need-payoff (ערך הפתרון). היא מובילה את הלקוח לגלות בעצמו את הצורך.",
-        arena: arenaName, difficulty: "hard"
-      },
-      {
-        id: "q8", text: "לקוח מתלונן על שירות קודם. מה עושים ראשון?",
-        options: [
-          "מסבירים למה זה לא אשמתנו",
-          "מקשיבים, מכירים בבעיה, ומתנצלים כנה",
-          "מציעים פיצוי מיידי",
-          "מעבירים לנציג אחר"
-        ],
-        correctIndex: 1,
-        explanation: "לקוח כועס צריך קודם כל להרגיש שמיעה. הכרה בבעיה והתנצלות כנה מורידים את הטמפרטורה לפני שמציעים פתרון.",
-        arena: arenaName, difficulty: "easy"
-      },
-      {
-        id: "q9", text: "מה זה 'social proof' ואיך משתמשים בו?",
-        options: [
-          "הוכחה שהמוצר עבד ברשתות חברתיות",
-          "שימוש בעדויות, סיפורי הצלחה ומספרים כדי לבנות אמון",
-          "מדיניות החזרות ברורה",
-          "הצגת תעודות ורישיונות"
-        ],
-        correctIndex: 1,
-        explanation: "Social proof מנצל את הנטייה האנושית ללמוד מאחרים. '500 עסקים כבר בחרו בנו' או 'לקוח X הגדיל מכירות ב-40%' הם דוגמאות חזקות.",
-        arena: arenaName, difficulty: "medium"
-      },
-      {
-        id: "q10", text: "מה ההבדל בין 'objection' ל-'condition' בתהליך מכירה?",
-        options: [
-          "אין הבדל, שניהם מונעים מכירה",
-          "Objection ניתן לטיפול, Condition הוא מניעה אמיתית שאי אפשר לפתור",
-          "Objection הוא טכני, Condition הוא רגשי",
-          "Condition הוא זמני, Objection הוא קבוע"
-        ],
-        correctIndex: 1,
-        explanation: "Objection היא התנגדות שניתן לטפל בה ('יקר מדי' → הצג ערך). Condition היא מניעה אמיתית ('אין לי תקציב לחצי שנה' → לא ניתן לסגור עכשיו).",
-        arena: arenaName, difficulty: "hard"
-      },
-    ]
-  };
-
-  const base = questionBank.default;
-  const result: Question[] = [];
-  for (let i = 0; i < count; i++) {
-    const q = { ...base[i % base.length], id: `${arenaId}-q${i + 1}`, arena: arenaName };
-    result.push(q);
-  }
-  return result;
+const DEFAULT_TRAINING_CONFIG: TrainingConfig = {
+  mode: "full",
+  questionCount: 10,
+  timePerQuestion: 60,
+  arenaId: null,
+  arenaName: "",
 };
 
-const DEMO_SESSIONS: QuizSession[] = [];
+// ── Helpers ────────────────────────────────────────────────────
 
-// ── Context ────────────────────────────────────────────────────
+/** Midnight on the most recent Sunday — the Israeli week boundary. */
+function startOfWeek(now = new Date()): Date {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - d.getDay());
+  return d;
+}
+
+function sanitizeRole(role: unknown): UserRole {
+  return role === "manager" ? "manager" : "trainee";
+}
+
+/**
+ * Rehydrate stored sessions, dropping anything malformed.
+ * Old builds wrote Date objects, which JSON turns into strings —
+ * both round-trip fine because the type is now `string`.
+ */
+function reviveSessions(raw: unknown): QuizSession[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((s): s is QuizSession => !!s && typeof s === "object")
+    .map(s => ({
+      ...s,
+      startTime: typeof s.startTime === "string" ? s.startTime : new Date().toISOString(),
+      endTime: typeof s.endTime === "string" ? s.endTime : undefined,
+      questions: Array.isArray(s.questions) ? s.questions : [],
+      answers: Array.isArray(s.answers) ? s.answers : [],
+      score: Number.isFinite(s.score) ? s.score : 0,
+      isDemo: !!s.isDemo,
+    }))
+    .filter(s => s.id && s.arenaName);
+}
+
+// ── Context shape ──────────────────────────────────────────────
+
+export interface LoginResult {
+  ok: boolean;
+  error?: string;
+  /** True when this account is still on its bootstrap password. */
+  mustChangePassword?: boolean;
+}
 
 interface AppContextValue {
   // Auth
   user: User | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string, name?: string) => boolean;
+  /** False until stored accounts have been loaded and migrated. */
+  authReady: boolean;
+  /** True while the signed-in user is still on the bootstrap password. */
+  mustChangePassword: boolean;
+  login: (email: string, password: string) => Promise<LoginResult>;
   logout: () => void;
-  updateUserProfile: (patch: Partial<Pick<User, "name" | "weeklyGoal" | "weeklyProgress">>) => void;
-  authUsers: Array<Pick<AuthUserAccount, "id" | "name" | "email" | "role">>;
-  createAuthUser: (payload: { name: string; email: string; password: string; role: "trainee" | "manager" }) => void;
-  updateAuthUserRole: (userId: string, role: "trainee" | "manager") => void;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  updateUserProfile: (patch: Partial<Pick<User, "name" | "weeklyGoal">>) => void;
+  authUsers: PublicAuthUser[];
+  createAuthUser: (payload: {
+    name: string;
+    email: string;
+    password: string;
+    role: UserRole;
+  }) => Promise<void>;
+  updateAuthUserRole: (userId: string, role: UserRole) => void;
   deleteAuthUser: (userId: string) => void;
 
   // Navigation
@@ -435,9 +153,11 @@ interface AppContextValue {
   trainingConfig: TrainingConfig;
   setTrainingConfig: (config: Partial<TrainingConfig>) => void;
 
-  // Arenas
+  // Arenas / content
   arenas: Arena[];
   questionBankLoaded: boolean;
+  /** True when the arenas and questions on screen are placeholders. */
+  isDemoContent: boolean;
   questionBankData: QuestionBankData | null;
   importQuestionBank: (file: File) => Promise<void>;
   importQuestionBankCategories: (file: File) => Promise<void>;
@@ -448,7 +168,7 @@ interface AppContextValue {
 
   // Quiz
   currentSession: QuizSession | null;
-  startQuiz: () => void;
+  startQuiz: () => { ok: boolean; error?: string };
   submitAnswer: (selectedIndex: number, timeSpent: number) => void;
   nextQuestion: () => void;
   currentQuestionIndex: number;
@@ -459,53 +179,174 @@ interface AppContextValue {
   // Sessions history
   sessions: QuizSession[];
   resetSessions: () => void;
+  /** Completed sessions since the start of the current week. */
+  weeklyProgress: number;
 
-  // Theme (managed by ThemeContext)
-  theme: "dark" | "light";
-  toggleTheme: () => void;
+  // Environment
+  storageAvailable: boolean;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [authUsers, setAuthUsers] = useState<AuthUserAccount[]>(() => {
-    try {
-      const raw = localStorage.getItem(AUTH_USERS_STORAGE_KEY);
-      if (!raw) return getDefaultAuthUsers();
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed) || parsed.length === 0) return getDefaultAuthUsers();
-      const normalized = parsed
-        .map((u: Partial<AuthUserAccount>) => ({
-          id: String(u.id || `u-${Date.now()}`),
-          name: String(u.name || "").trim(),
-          email: String(u.email || "").trim().toLowerCase(),
-          password: String(u.password || ""),
-          role: u.role === "manager" ? "manager" : "trainee",
-        }))
-        .filter(u => u.name && u.email && u.password);
-      return normalized.length > 0 ? normalized : getDefaultAuthUsers();
-    } catch {
-      return getDefaultAuthUsers();
-    }
-  });
-  const [user, setUser] = useState<User | null>(null);
+  const [authUsers, setAuthUsers] = useState<AuthUserAccount[]>([]);
+  const [authReady, setAuthReady] = useState(false);
+  const [user, setUser] = useState<User | null>(() =>
+    readJson<User | null>(STORAGE_KEYS.session, null)
+  );
+  const [mustChangePassword, setMustChangePassword] = useState(false);
   const [currentScreen, setCurrentScreen] = useState<Screen>("hub");
-  const [theme] = useState<"dark" | "light">("dark"); // Managed by ThemeContext
-  const [sessions, setSessions] = useState<QuizSession[]>(DEMO_SESSIONS);
+  const [sessions, setSessions] = useState<QuizSession[]>(() =>
+    reviveSessions(readJson<unknown>(STORAGE_KEYS.history, []))
+  );
   const [questionBank, setQuestionBank] = useState<QuestionBankData | null>(null);
 
-  const [trainingConfig, setTrainingConfigState] = useState<TrainingConfig>({
-    mode: "full",
-    questionCount: 10,
-    timePerQuestion: 60,
-    arenaId: null,
-    arenaName: "",
-  });
+  const [trainingConfig, setTrainingConfigState] = useState<TrainingConfig>(() => ({
+    ...DEFAULT_TRAINING_CONFIG,
+    ...readJson<Partial<TrainingConfig>>(STORAGE_KEYS.trainingConfig, {}),
+  }));
 
   const [currentSession, setCurrentSession] = useState<QuizSession | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [lastAnswer, setLastAnswer] = useState<QuizAnswer | null>(null);
   const [isShowingFeedback, setIsShowingFeedback] = useState(false);
+
+  const storageAvailable = useMemo(() => isStorageAvailable(), []);
+
+  // ── Persistence ──────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!authReady) return; // Don't clobber stored accounts with the empty initial state.
+    writeJson(STORAGE_KEYS.authUsers, authUsers);
+  }, [authUsers, authReady]);
+
+  useEffect(() => {
+    if (user) writeJson(STORAGE_KEYS.session, user);
+    else removeKey(STORAGE_KEYS.session);
+  }, [user]);
+
+  useEffect(() => {
+    writeJson(STORAGE_KEYS.history, sessions);
+  }, [sessions]);
+
+  useEffect(() => {
+    writeJson(STORAGE_KEYS.trainingConfig, trainingConfig);
+  }, [trainingConfig]);
+
+  // ── Account bootstrap + migration ────────────────────────────
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const bootstrap = async () => {
+      const stored = readJson<unknown[]>(STORAGE_KEYS.authUsers, []);
+
+      if (Array.isArray(stored) && stored.length > 0) {
+        const normalized = stored
+          .map(raw => {
+            const u = raw as Partial<AuthUserAccount>;
+            return {
+              id: String(u.id || ""),
+              name: String(u.name || "").trim(),
+              email: String(u.email || "").trim().toLowerCase(),
+              salt: String(u.salt || ""),
+              passwordHash: String(u.passwordHash || ""),
+              role: sanitizeRole(u.role),
+              createdAt: String(u.createdAt || new Date().toISOString()),
+              mustChangePassword: !!u.mustChangePassword,
+            } satisfies AuthUserAccount;
+          })
+          .filter(u => u.id && u.name && u.email && u.salt && u.passwordHash);
+
+        if (normalized.length > 0) {
+          if (!cancelled) {
+            setAuthUsers(normalized);
+            setAuthReady(true);
+          }
+          return;
+        }
+      }
+
+      // Migrate v1 accounts, which stored passwords as plaintext.
+      const legacy = readJson<Array<Record<string, unknown>>>(STORAGE_KEYS.legacyAuthUsers, []);
+      if (Array.isArray(legacy) && legacy.length > 0 && isCryptoAvailable()) {
+        try {
+          const migrated = await Promise.all(
+            legacy
+              .filter(u => u.email && u.password)
+              .map(async u => {
+                const { salt, passwordHash } = await createCredential(String(u.password));
+                return {
+                  id: String(u.id || `u-${crypto.randomUUID()}`),
+                  name: String(u.name || "").trim() || String(u.email),
+                  email: String(u.email).trim().toLowerCase(),
+                  salt,
+                  passwordHash,
+                  role: sanitizeRole(u.role),
+                  createdAt: new Date().toISOString(),
+                  mustChangePassword: false,
+                } satisfies AuthUserAccount;
+              })
+          );
+          if (migrated.length > 0) {
+            // Drop the plaintext copy now that hashes exist.
+            removeKey(STORAGE_KEYS.legacyAuthUsers);
+            if (!cancelled) {
+              setAuthUsers(migrated);
+              setAuthReady(true);
+            }
+            return;
+          }
+        } catch (err) {
+          console.warn("[auth] legacy migration failed", err);
+        }
+      }
+
+      // Fresh install: seed the single bootstrap admin.
+      if (!isCryptoAvailable()) {
+        console.error("[auth] Web Crypto unavailable — sign-in requires HTTPS or localhost");
+        if (!cancelled) setAuthReady(true);
+        return;
+      }
+
+      const { salt, passwordHash } = await createCredential(BOOTSTRAP_PASSWORD);
+      if (cancelled) return;
+      setAuthUsers([
+        {
+          id: "u-admin",
+          name: "Support Admin",
+          email: BOOTSTRAP_EMAIL,
+          salt,
+          passwordHash,
+          role: "manager",
+          createdAt: new Date().toISOString(),
+          mustChangePassword: true,
+        },
+      ]);
+      setAuthReady(true);
+    };
+
+    bootstrap();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // A stored session is meaningless if its account is gone.
+  useEffect(() => {
+    if (!authReady || !user) return;
+    const account = authUsers.find(a => a.id === user.id);
+    if (!account) {
+      setUser(null);
+      return;
+    }
+    setMustChangePassword(!!account.mustChangePassword);
+    if (account.role !== user.role) {
+      setUser(prev => (prev ? { ...prev, role: account.role } : prev));
+    }
+  }, [authReady, authUsers, user]);
+
+  // ── Question bank loading ────────────────────────────────────
 
   const getQuestionBankEndpoints = useCallback(() => {
     const baseUrl = import.meta.env.BASE_URL || "/";
@@ -517,334 +358,393 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     ];
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem(AUTH_USERS_STORAGE_KEY, JSON.stringify(authUsers));
-  }, [authUsers]);
-
-  const arenas = useMemo<Arena[]>(() => {
-    const cats = questionBank?.categories;
-    if (!cats) return DEMO_ARENAS;
-    const names = Object.keys(cats).sort((a, b) => a.localeCompare(b, "he"));
-    return names.map((name, idx) => {
-      const meta = cats[name];
-      const questions = Array.isArray(meta?.questions) ? meta!.questions! : [];
-      return {
-        id: `arena-${idx + 1}`,
-        name,
-        icon: meta?.icon || "🎯",
-        questionCount: questions.length,
-        category: meta?.product || "זירת מכירה",
-        summary: buildArenaSummary(meta),
-      };
-    });
-  }, [questionBank]);
+  const fetchQuestionBank = useCallback(async (): Promise<QuestionBankData | null> => {
+    for (const url of getQuestionBankEndpoints()) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const parsed = parseAnyQuestionBank(await res.json());
+        if (parsed) return parsed;
+      } catch {
+        // Try the next source.
+      }
+    }
+    return null;
+  }, [getQuestionBankEndpoints]);
 
   useEffect(() => {
     let cancelled = false;
-    const loadBank = async () => {
-      try {
-        const raw = localStorage.getItem(QUESTION_BANK_STORAGE_KEY);
-        if (raw) {
-          const json = JSON.parse(raw);
-          const parsed = parseQuestionBank(json) || parseLegacyMergedExamSchema(json);
-          if (parsed && !cancelled) {
-            setQuestionBank(parsed);
-            return;
-          }
-        }
-      } catch (e) {
-        console.warn("Failed to load stored question bank", e);
-      }
 
-      for (const url of getQuestionBankEndpoints()) {
-        try {
-          const res = await fetch(url);
-          if (!res.ok) continue;
-          const json = await res.json();
-          const parsed = parseQuestionBank(json) || parseLegacyMergedExamSchema(json);
-          if (parsed) {
-            if (!cancelled) setQuestionBank(parsed);
-            return;
-          }
-        } catch {
-          // Try next source
+    const loadBank = async () => {
+      const storedRaw = readJson<unknown>(STORAGE_KEYS.questionBank, null);
+      if (storedRaw) {
+        const parsed = parseAnyQuestionBank(storedRaw);
+        if (parsed && !cancelled) {
+          setQuestionBank(parsed);
+          return;
         }
       }
+      const fetched = await fetchQuestionBank();
+      if (fetched && !cancelled) setQuestionBank(fetched);
     };
 
     loadBank();
     return () => {
       cancelled = true;
     };
-  }, [getQuestionBankEndpoints]);
+  }, [fetchQuestionBank]);
 
-  const login = useCallback((email: string, password: string, name?: string) => {
-    const normalizedEmail = String(email || "").trim().toLowerCase();
-    const account = authUsers.find(a => a.email === normalizedEmail && a.password === password);
-    if (!account) return false;
-    setUser({
-      id: account.id,
-      name: name || account.name,
-      email: normalizedEmail,
-      role: account.role,
-      joinDate: new Date(Date.now() - 86400000 * 90),
-      totalSessions: 23,
-      avgScore: 78,
-      weeklyGoal: 5,
-      weeklyProgress: 3,
-    });
-    setSessions([]);
-    setCurrentScreen("hub");
-    return true;
-  }, [authUsers]);
+  // ── Derived content ──────────────────────────────────────────
+
+  const realArenas = useMemo(() => buildArenas(questionBank), [questionBank]);
+
+  // A bank with zero usable questions is no better than no bank at
+  // all, so fall through to demo content rather than showing an
+  // arena list that can't start a quiz.
+  const isDemoContent = useMemo(
+    () => realArenas.every(a => a.questionCount === 0),
+    [realArenas]
+  );
+
+  const arenas = useMemo(
+    () => (isDemoContent ? DEMO_ARENAS : realArenas),
+    [isDemoContent, realArenas]
+  );
+
+  const weeklyProgress = useMemo(() => {
+    const weekStart = startOfWeek().getTime();
+    return sessions.filter(s => s.endTime && new Date(s.startTime).getTime() >= weekStart).length;
+  }, [sessions]);
+
+  // ── Auth actions ─────────────────────────────────────────────
+
+  const login = useCallback(
+    async (email: string, password: string): Promise<LoginResult> => {
+      if (!isCryptoAvailable()) {
+        return { ok: false, error: "נדרש חיבור מאובטח (HTTPS) כדי להתחבר" };
+      }
+
+      const normalizedEmail = String(email || "").trim().toLowerCase();
+      const account = authUsers.find(a => a.email === normalizedEmail);
+
+      // Hash even when the account is missing, so a wrong email and a
+      // wrong password take the same amount of time to reject.
+      const probe = account ?? {
+        salt: "00000000000000000000000000000000",
+        passwordHash: "",
+      };
+      const matched = await verifyPassword(password, probe.salt, probe.passwordHash);
+
+      if (!account || !matched) {
+        return { ok: false, error: "מייל או סיסמה שגויים" };
+      }
+
+      setUser({
+        id: account.id,
+        name: account.name,
+        email: account.email,
+        role: account.role,
+        joinDate: account.createdAt,
+        weeklyGoal: 5,
+      });
+      setMustChangePassword(!!account.mustChangePassword);
+      setCurrentScreen("hub");
+      return { ok: true, mustChangePassword: !!account.mustChangePassword };
+    },
+    [authUsers]
+  );
 
   const logout = useCallback(() => {
     setUser(null);
+    setMustChangePassword(false);
+    setCurrentSession(null);
+    setCurrentQuestionIndex(0);
+    setLastAnswer(null);
+    setIsShowingFeedback(false);
     setCurrentScreen("hub");
   }, []);
 
-  const updateUserProfile = useCallback((patch: Partial<Pick<User, "name" | "weeklyGoal" | "weeklyProgress">>) => {
-    setUser(prev => {
-      if (!prev) return prev;
-      return { ...prev, ...patch };
-    });
-  }, []);
+  const changePassword = useCallback(
+    async (currentPassword: string, newPassword: string) => {
+      if (!user) throw new Error("אין משתמש מחובר");
 
-  const createAuthUser = useCallback((payload: { name: string; email: string; password: string; role: "trainee" | "manager" }) => {
-    const name = String(payload.name || "").trim();
-    const email = String(payload.email || "").trim().toLowerCase();
-    const password = String(payload.password || "");
-    if (!name || !email || !password) throw new Error("יש למלא שם, מייל וסיסמה");
-    setAuthUsers(prev => {
-      if (prev.some(u => u.email === email)) throw new Error("קיים כבר משתמש עם המייל הזה");
-      return [
-        ...prev,
-        {
-          id: `u-${Date.now()}`,
-          name,
-          email,
-          password,
-          role: payload.role,
-        },
-      ];
-    });
-  }, []);
+      const account = authUsers.find(a => a.id === user.id);
+      if (!account) throw new Error("חשבון המשתמש לא נמצא");
 
-  const updateAuthUserRole = useCallback((userId: string, role: "trainee" | "manager") => {
-    setAuthUsers(prev => {
-      const current = prev.find(u => u.id === userId);
-      if (!current) return prev;
+      const ok = await verifyPassword(currentPassword, account.salt, account.passwordHash);
+      if (!ok) throw new Error("הסיסמה הנוכחית שגויה");
+
+      const weakness = validatePasswordStrength(newPassword);
+      if (weakness) throw new Error(weakness);
+      if (currentPassword === newPassword) throw new Error("הסיסמה החדשה זהה לנוכחית");
+
+      const { salt, passwordHash } = await createCredential(newPassword);
+      setAuthUsers(prev =>
+        prev.map(a =>
+          a.id === user.id ? { ...a, salt, passwordHash, mustChangePassword: false } : a
+        )
+      );
+      setMustChangePassword(false);
+    },
+    [authUsers, user]
+  );
+
+  const updateUserProfile = useCallback(
+    (patch: Partial<Pick<User, "name" | "weeklyGoal">>) => {
+      setUser(prev => (prev ? { ...prev, ...patch } : prev));
+      if (patch.name) {
+        setAuthUsers(prev =>
+          prev.map(a => (a.id === user?.id ? { ...a, name: patch.name! } : a))
+        );
+      }
+    },
+    [user?.id]
+  );
+
+  // Validation happens BEFORE setState. React may invoke a state
+  // updater more than once (StrictMode, concurrent re-render), so
+  // throwing from inside one is neither reliable nor catchable at
+  // the call site.
+  const createAuthUser = useCallback(
+    async (payload: { name: string; email: string; password: string; role: UserRole }) => {
+      const name = String(payload.name || "").trim();
+      const email = String(payload.email || "").trim().toLowerCase();
+      const password = String(payload.password || "");
+
+      if (!name || !email || !password) throw new Error("יש למלא שם, מייל וסיסמה");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("כתובת המייל אינה תקינה");
+      if (authUsers.some(u => u.email === email)) throw new Error("קיים כבר משתמש עם המייל הזה");
+
+      const weakness = validatePasswordStrength(password);
+      if (weakness) throw new Error(weakness);
+      if (!isCryptoAvailable()) throw new Error("נדרש חיבור מאובטח (HTTPS) ליצירת משתמש");
+
+      const { salt, passwordHash } = await createCredential(password);
+      setAuthUsers(prev => {
+        // Re-check inside the updater in case two adds raced.
+        if (prev.some(u => u.email === email)) return prev;
+        return [
+          ...prev,
+          {
+            id: `u-${crypto.randomUUID()}`,
+            name,
+            email,
+            salt,
+            passwordHash,
+            role: sanitizeRole(payload.role),
+            createdAt: new Date().toISOString(),
+          },
+        ];
+      });
+    },
+    [authUsers]
+  );
+
+  const updateAuthUserRole = useCallback(
+    (userId: string, role: UserRole) => {
+      const current = authUsers.find(u => u.id === userId);
+      if (!current) throw new Error("המשתמש לא נמצא");
       if (current.role === "manager" && role !== "manager") {
-        const managerCount = prev.filter(u => u.role === "manager").length;
+        const managerCount = authUsers.filter(u => u.role === "manager").length;
         if (managerCount <= 1) throw new Error("חייב להישאר לפחות משתמש הנהלה אחד");
       }
-      return prev.map(u => (u.id === userId ? { ...u, role } : u));
-    });
-  }, []);
+      setAuthUsers(prev => prev.map(u => (u.id === userId ? { ...u, role } : u)));
+    },
+    [authUsers]
+  );
 
-  const deleteAuthUser = useCallback((userId: string) => {
-    setAuthUsers(prev => {
-      const target = prev.find(u => u.id === userId);
-      if (!target) return prev;
+  const deleteAuthUser = useCallback(
+    (userId: string) => {
+      const target = authUsers.find(u => u.id === userId);
+      if (!target) throw new Error("המשתמש לא נמצא");
+      if (user?.id === userId) throw new Error("לא ניתן למחוק את המשתמש שמחובר כרגע");
       if (target.role === "manager") {
-        const managerCount = prev.filter(u => u.role === "manager").length;
+        const managerCount = authUsers.filter(u => u.role === "manager").length;
         if (managerCount <= 1) throw new Error("לא ניתן למחוק את משתמש ההנהלה האחרון");
       }
-      if (user?.id === userId) throw new Error("לא ניתן למחוק את המשתמש שמחובר כרגע");
-      return prev.filter(u => u.id !== userId);
-    });
-  }, [user?.id]);
+      setAuthUsers(prev => prev.filter(u => u.id !== userId));
+    },
+    [authUsers, user?.id]
+  );
+
+  // ── Navigation / config ──────────────────────────────────────
 
   const setTrainingConfig = useCallback((config: Partial<TrainingConfig>) => {
     setTrainingConfigState(prev => ({ ...prev, ...config }));
   }, []);
 
-  const setScreen = useCallback((screen: Screen) => {
-    setCurrentScreen(screen);
-  }, []);
+  const setScreen = useCallback((screen: Screen) => setCurrentScreen(screen), []);
 
-  const importQuestionBank = useCallback(async (file: File) => {
-    const text = await file.text();
-    const json = JSON.parse(text);
-    const parsed = parseQuestionBank(json) || parseLegacyMergedExamSchema(json);
-    if (!parsed) throw new Error("מבנה JSON לא תקין");
-    setQuestionBank(parsed);
-    localStorage.setItem(QUESTION_BANK_STORAGE_KEY, JSON.stringify(parsed));
-  }, []);
+  // ── Question bank management ─────────────────────────────────
 
-  const importQuestionBankCategories = useCallback(async (file: File) => {
-    const text = await file.text();
-    const json = JSON.parse(text);
-    const parsed = parseQuestionBank(json) || parseLegacyMergedExamSchema(json);
-    if (!parsed?.categories || Object.keys(parsed.categories).length === 0) {
-      throw new Error("לא נמצאו קטגוריות תקינות בקובץ");
+  const persistBank = useCallback((next: QuestionBankData) => {
+    const saved = writeJson(STORAGE_KEYS.questionBank, next);
+    if (!saved) {
+      console.warn("[bank] could not persist question bank; changes are session-only");
     }
-    setQuestionBank(prev => {
-      const next: QuestionBankData = {
-        categories: {
-          ...(prev?.categories || {}),
-          ...parsed.categories,
-        },
-      };
-      localStorage.setItem(QUESTION_BANK_STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
+    return saved;
   }, []);
 
-  const replaceQuestionBank = useCallback((data: QuestionBankData) => {
-    const parsed = parseQuestionBank(data) || parseLegacyMergedExamSchema(data);
-    if (!parsed) throw new Error("מבנה JSON לא תקין");
-    setQuestionBank(parsed);
-    localStorage.setItem(QUESTION_BANK_STORAGE_KEY, JSON.stringify(parsed));
-  }, []);
+  const importQuestionBank = useCallback(
+    async (file: File) => {
+      const parsed = parseAnyQuestionBank(JSON.parse(await file.text()));
+      if (!parsed) throw new Error("מבנה JSON לא תקין");
+      setQuestionBank(parsed);
+      persistBank(parsed);
+    },
+    [persistBank]
+  );
+
+  const importQuestionBankCategories = useCallback(
+    async (file: File) => {
+      const parsed = parseAnyQuestionBank(JSON.parse(await file.text()));
+      if (!parsed?.categories || Object.keys(parsed.categories).length === 0) {
+        throw new Error("לא נמצאו קטגוריות תקינות בקובץ");
+      }
+      setQuestionBank(prev => {
+        const next: QuestionBankData = {
+          categories: { ...(prev?.categories || {}), ...parsed.categories },
+        };
+        persistBank(next);
+        return next;
+      });
+    },
+    [persistBank]
+  );
+
+  const replaceQuestionBank = useCallback(
+    (data: QuestionBankData) => {
+      const parsed = parseAnyQuestionBank(data);
+      if (!parsed) throw new Error("מבנה JSON לא תקין");
+      setQuestionBank(parsed);
+      persistBank(parsed);
+    },
+    [persistBank]
+  );
 
   const clearImportedQuestionBank = useCallback(() => {
-    localStorage.removeItem(QUESTION_BANK_STORAGE_KEY);
+    removeKey(STORAGE_KEYS.questionBank);
     setQuestionBank(null);
   }, []);
 
-  const deleteQuestionBankCategory = useCallback((categoryName: string) => {
-    if (!categoryName) return;
-    setQuestionBank(prev => {
-      const current = prev?.categories || {};
-      if (!current[categoryName]) return prev;
-      const nextCategories = { ...current };
-      delete nextCategories[categoryName];
-      const next: QuestionBankData = { categories: nextCategories };
-      localStorage.setItem(QUESTION_BANK_STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
-  }, []);
+  const deleteQuestionBankCategory = useCallback(
+    (categoryName: string) => {
+      if (!categoryName) return;
+      setQuestionBank(prev => {
+        const current = prev?.categories || {};
+        if (!current[categoryName]) return prev;
+        const nextCategories = { ...current };
+        delete nextCategories[categoryName];
+        const next: QuestionBankData = { categories: nextCategories };
+        persistBank(next);
+        return next;
+      });
+    },
+    [persistBank]
+  );
 
   const resetQuestionBankContent = useCallback(async () => {
-    localStorage.removeItem(QUESTION_BANK_STORAGE_KEY);
-    for (const url of getQuestionBankEndpoints()) {
-      try {
-        const res = await fetch(url);
-        if (!res.ok) continue;
-        const json = await res.json();
-        const parsed = parseQuestionBank(json) || parseLegacyMergedExamSchema(json);
-        if (parsed) {
-          setQuestionBank(parsed);
-          return;
-        }
-      } catch {
-        // Try next source
-      }
-    }
-    setQuestionBank(null);
-  }, [getQuestionBankEndpoints]);
+    removeKey(STORAGE_KEYS.questionBank);
+    setQuestionBank(await fetchQuestionBank());
+  }, [fetchQuestionBank]);
 
-  const startQuiz = useCallback(() => {
+  // ── Quiz flow ────────────────────────────────────────────────
+
+  const startQuiz = useCallback((): { ok: boolean; error?: string } => {
     const arena = arenas.find(a => a.id === trainingConfig.arenaId);
     const arenaName = arena?.name || trainingConfig.arenaName || "כללי";
-    const targetCount = Math.max(5, Math.min(30, trainingConfig.questionCount));
-    const selectedCat = questionBank?.categories?.[arenaName];
+    const targetCount = Math.max(1, Math.min(30, trainingConfig.questionCount));
 
-    let questions: Question[] = [];
-    if (selectedCat?.questions?.length) {
-      const all = selectedCat.questions
-        .filter(q => q.status !== "archived")
-        .filter(q => typeof q.question === "string" && Array.isArray(q.options) && q.options.length >= 2)
-        .map((q, idx) => {
-          const options = (q.options || []).map(o => String(o));
-          const correct = Number(q.correctIndex);
-          return {
-            id: q.id || `${arenaName}-${idx + 1}`,
-            text: String(q.question || ""),
-            options,
-            correctIndex: Number.isInteger(correct) && correct >= 0 && correct < options.length ? correct : 0,
-            explanation: String(q.explanation || ""),
-            coach: q.coachNote ? String(q.coachNote) : undefined,
-            arena: arenaName,
-            difficulty: normalizeDifficulty(q.difficulty),
-          } satisfies Question;
-        });
+    const bankQuestions = isDemoContent
+      ? []
+      : toQuizQuestions(questionBank?.categories?.[arenaName]?.questions, arenaName);
 
-      if (trainingConfig.mode === "mistakes" && sessions.length > 0) {
-        const wrongIds = new Set<string>();
-        sessions.forEach(s => {
-          s.answers.forEach(a => {
-            if (!a.isCorrect) wrongIds.add(a.questionId);
-          });
-        });
-        const mistakesPool = all.filter(q => wrongIds.has(q.id));
-        questions = pickQuestions(mistakesPool.length > 0 ? mistakesPool : all, targetCount);
-      } else {
-        questions = pickQuestions(all, targetCount);
+    const usingDemo = bankQuestions.length === 0;
+    let pool: Question[] = usingDemo ? getDemoQuestions(arenaName) : bankQuestions;
+
+    if (trainingConfig.mode === "mistakes") {
+      const wrongIds = new Set<string>();
+      sessions.forEach(s => s.answers.forEach(a => !a.isCorrect && wrongIds.add(a.questionId)));
+      const mistakesPool = pool.filter(q => wrongIds.has(q.id));
+      if (mistakesPool.length === 0) {
+        return { ok: false, error: "אין עדיין שאלות שטעית בהן בזירה הזו" };
       }
+      pool = mistakesPool;
     }
 
+    const questions = pickQuestions(pool, targetCount);
     if (questions.length === 0) {
-      questions = generateQuestions(
-        trainingConfig.arenaId || "default",
-        arenaName,
-        targetCount
-      );
+      return { ok: false, error: "לא נמצאו שאלות זמינות בזירה הזו" };
     }
 
-    const session: QuizSession = {
-      id: `s${Date.now()}`,
+    setCurrentSession({
+      id: `s-${crypto.randomUUID()}`,
       arenaName,
       mode: trainingConfig.mode,
       questions,
       answers: [],
-      startTime: new Date(),
+      startTime: new Date().toISOString(),
       score: 0,
-    };
-
-    setCurrentSession(session);
+      isDemo: usingDemo,
+    });
     setCurrentQuestionIndex(0);
     setLastAnswer(null);
     setIsShowingFeedback(false);
     setCurrentScreen("quiz");
-  }, [trainingConfig, arenas, questionBank, sessions]);
+    return { ok: true };
+  }, [arenas, isDemoContent, questionBank, sessions, trainingConfig]);
 
-  const submitAnswer = useCallback((selectedIndex: number, timeSpent: number) => {
-    if (!currentSession) return;
-    const question = currentSession.questions[currentQuestionIndex];
-    if (!question) return;
+  // Guards double submission when the timer fires at the same moment
+  // the trainee clicks an answer.
+  const answeredIndexRef = useRef<number | null>(null);
 
-    const isCorrect = selectedIndex === question.correctIndex;
-    const answer: QuizAnswer = {
-      questionId: question.id,
-      selectedIndex,
-      isCorrect,
-      timeSpent,
-    };
+  useEffect(() => {
+    answeredIndexRef.current = null;
+  }, [currentQuestionIndex, currentSession?.id]);
 
-    setLastAnswer(answer);
-    setIsShowingFeedback(true);
+  const submitAnswer = useCallback(
+    (selectedIndex: number, timeSpent: number) => {
+      if (answeredIndexRef.current === currentQuestionIndex) return;
 
-    setCurrentSession(prev => {
-      if (!prev) return prev;
-      return { ...prev, answers: [...prev.answers, answer] };
-    });
-  }, [currentSession, currentQuestionIndex]);
+      const question = currentSession?.questions[currentQuestionIndex];
+      if (!question) return;
+
+      answeredIndexRef.current = currentQuestionIndex;
+      const answer: QuizAnswer = {
+        questionId: question.id,
+        selectedIndex,
+        isCorrect: selectedIndex === question.correctIndex,
+        timeSpent,
+      };
+
+      setLastAnswer(answer);
+      setIsShowingFeedback(true);
+      setCurrentSession(prev => (prev ? { ...prev, answers: [...prev.answers, answer] } : prev));
+    },
+    [currentSession, currentQuestionIndex]
+  );
 
   const nextQuestion = useCallback(() => {
     if (!currentSession) return;
     const nextIdx = currentQuestionIndex + 1;
 
-    if (nextIdx >= currentSession.questions.length) {
-      // End quiz
-      const allAnswers = [...currentSession.answers];
-      const score = Math.round((allAnswers.filter(a => a.isCorrect).length / currentSession.questions.length) * 100);
-
-      const finishedSession: QuizSession = {
-        ...currentSession,
-        endTime: new Date(),
-        score,
-      };
-
-      setCurrentSession(finishedSession);
-      setSessions(prev => [finishedSession, ...prev]);
-      setCurrentScreen("results");
-    } else {
+    if (nextIdx < currentSession.questions.length) {
       setCurrentQuestionIndex(nextIdx);
       setLastAnswer(null);
       setIsShowingFeedback(false);
+      return;
     }
+
+    const correctCount = currentSession.answers.filter(a => a.isCorrect).length;
+    const finished: QuizSession = {
+      ...currentSession,
+      endTime: new Date().toISOString(),
+      score: calculateScore(correctCount, currentSession.questions.length),
+    };
+
+    setCurrentSession(finished);
+    setSessions(prev => [finished, ...prev]);
+    setCurrentScreen("results");
   }, [currentSession, currentQuestionIndex]);
 
   const resetSessions = useCallback(() => {
@@ -855,21 +755,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setIsShowingFeedback(false);
   }, []);
 
-  const toggleTheme = useCallback(() => {
-    // Theme toggling is handled by ThemeContext
-    console.warn('Use useTheme().toggleTheme() instead');
-  }, []);
-
   const currentQuestion = currentSession?.questions[currentQuestionIndex] ?? null;
 
-  return (
-    <AppContext.Provider value={{
+  const publicAuthUsers = useMemo<PublicAuthUser[]>(
+    () => authUsers.map(({ id, name, email, role }) => ({ id, name, email, role })),
+    [authUsers]
+  );
+
+  const value = useMemo<AppContextValue>(
+    () => ({
       user,
       isAuthenticated: !!user,
+      authReady,
+      mustChangePassword,
       login,
       logout,
+      changePassword,
       updateUserProfile,
-      authUsers: authUsers.map(({ id, name, email, role }) => ({ id, name, email, role })),
+      authUsers: publicAuthUsers,
       createAuthUser,
       updateAuthUserRole,
       deleteAuthUser,
@@ -878,7 +781,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       trainingConfig,
       setTrainingConfig,
       arenas,
-      questionBankLoaded: !!questionBank,
+      questionBankLoaded: !!questionBank && !isDemoContent,
+      isDemoContent,
       questionBankData: questionBank,
       importQuestionBank,
       importQuestionBankCategories,
@@ -896,12 +800,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isShowingFeedback,
       sessions,
       resetSessions,
-      theme,
-      toggleTheme,
-    }}>
-      {children}
-    </AppContext.Provider>
+      weeklyProgress,
+      storageAvailable,
+    }),
+    [
+      user,
+      authReady,
+      mustChangePassword,
+      login,
+      logout,
+      changePassword,
+      updateUserProfile,
+      publicAuthUsers,
+      createAuthUser,
+      updateAuthUserRole,
+      deleteAuthUser,
+      currentScreen,
+      setScreen,
+      trainingConfig,
+      setTrainingConfig,
+      arenas,
+      questionBank,
+      isDemoContent,
+      importQuestionBank,
+      importQuestionBankCategories,
+      clearImportedQuestionBank,
+      replaceQuestionBank,
+      deleteQuestionBankCategory,
+      resetQuestionBankContent,
+      currentSession,
+      startQuiz,
+      submitAnswer,
+      nextQuestion,
+      currentQuestionIndex,
+      currentQuestion,
+      lastAnswer,
+      isShowingFeedback,
+      sessions,
+      resetSessions,
+      weeklyProgress,
+      storageAvailable,
+    ]
   );
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
 export function useApp() {

@@ -3,17 +3,43 @@
 
   <head>
     <meta charset="UTF-8" />
+    <!-- No maximum-scale/user-scalable: capping zoom fails WCAG 1.4.4
+         and the Israeli IS 5568 accessibility standard. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <title>INFINIX Simulator — סימולטור אימון מכירות</title>
     <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1" />
-    <title>INFINIX Simulator</title>
+      name="description"
+      content="סימולטור אימון מכירות בעברית: תרגול התנגדויות וטכניקות סגירה, משוב מיידי אחרי כל תשובה ומעקב ביצועים לאורך זמן." />
+    <meta name="theme-color" content="#000000" />
+
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="apple-touch-icon" href="./favicon.svg" />
+
+    <!-- Open Graph / social previews -->
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="he_IL" />
+    <meta property="og:site_name" content="INFINIX Simulator" />
+    <meta property="og:title" content="INFINIX Simulator — סימולטור אימון מכירות" />
+    <meta
+      property="og:description"
+      content="תרגול התנגדויות וטכניקות סגירה, משוב מיידי ומעקב ביצועים." />
+    <meta name="twitter:card" content="summary" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet" />
   </head>
 
   <body>
     <div id="root"></div>
+    <noscript>
+      <div style="padding: 2rem; text-align: center; font-family: sans-serif">
+        כדי להשתמש ב-INFINIX Simulator יש לאפשר JavaScript בדפדפן.
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 

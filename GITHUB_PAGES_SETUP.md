@@ -17,6 +17,20 @@
 - נוסף workflow לפריסה אוטומטית:
   - `.github/workflows/deploy-pages.yml`
   - רץ על כל push ל־`main`.
+  - מריץ בדיקת טיפוסים ובדיקות **לפני** ה־build; כישלון עוצר את הפריסה.
+
+## משתני סביבה
+
+העתק את `.env.example` ל־`.env.local` (לא נכנס ל־Git):
+
+```bash
+VITE_ADMIN_EMAIL=support@successcollege.co.il
+VITE_ADMIN_PASSWORD=בחר-סיסמה-חזקה
+```
+
+ב־GitHub Actions הגדר אותם כ־Repository Secrets והעבר ל־build step.
+שים לב: ב־build סטטי הערכים נצרבים לתוך ה־JavaScript. ההגנה האמיתית
+היא החלפת הסיסמה הכפויה בכניסה הראשונה — ראה `docs/SECURITY.md`.
 
 ## איך לבנות ל־GitHub Pages
 
