@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useApp } from "@/contexts/AppContext";
-import { ChevronLeft, Clock, AlertTriangle, CheckCircle2, XCircle, Zap } from "lucide-react";
+import { ChevronLeft, Clock, AlertTriangle, CheckCircle2, XCircle, Zap, FlaskConical } from "lucide-react";
 
 export default function QuizScreen() {
   const {
@@ -36,29 +36,30 @@ export default function QuizScreen() {
     startTimeRef.current = Date.now();
   }, [currentQuestionIndex, trainingConfig.timePerQuestion]);
 
-  // Countdown timer
+  // Countdown tick. Kept free of side effects: a state updater can be
+  // invoked more than once per tick, so submitting from inside it
+  // could record the same timeout answer twice.
   useEffect(() => {
     if (isShowingFeedback || trainingConfig.timePerQuestion === 0) return;
 
     timerRef.current = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(timerRef.current!);
-          // Auto-submit with no answer (timeout)
-          if (!isShowingFeedback && selectedIndex === null) {
-            const timeSpent = Math.round((Date.now() - startTimeRef.current) / 1000);
-            submitAnswer(-1, timeSpent);
-          }
-          return 0;
-        }
-        return prev - 1;
-      });
+      setTimeLeft(prev => Math.max(0, prev - 1));
     }, 1000);
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [currentQuestionIndex, isShowingFeedback, trainingConfig.timePerQuestion, submitAnswer, selectedIndex]);
+  }, [currentQuestionIndex, isShowingFeedback, trainingConfig.timePerQuestion]);
+
+  // Auto-submit once the clock actually reaches zero.
+  useEffect(() => {
+    if (timeLeft > 0) return;
+    if (isShowingFeedback || selectedIndex !== null) return;
+    if (trainingConfig.timePerQuestion === 0) return;
+
+    const timeSpent = Math.round((Date.now() - startTimeRef.current) / 1000);
+    submitAnswer(-1, timeSpent);
+  }, [timeLeft, isShowingFeedback, selectedIndex, trainingConfig.timePerQuestion, submitAnswer]);
 
   const handleSelect = useCallback((index: number) => {
     if (isShowingFeedback || selectedIndex !== null) return;
@@ -108,10 +109,16 @@ export default function QuizScreen() {
           <span className="text-sm" style={{ color: "var(--muted-foreground)" }}>/ {totalQuestions}</span>
         </div>
 
-        {/* Timer */}
+        {/* Timer — polite so it isn't announced every single second. */}
         {timeLimit > 0 && (
-          <div className={`flex items-center gap-1.5 ${timerClass}`} style={{ color: timerColor }}>
-            <Clock size={15} />
+          <div
+            className={`flex items-center gap-1.5 ${timerClass}`}
+            style={{ color: timerColor }}
+            role="timer"
+            aria-live="off"
+            aria-label={`נותרו ${timeLeft} שניות`}
+          >
+            <Clock size={15} aria-hidden="true" />
             <span className="font-black text-base" style={{ fontFamily: "Inter, sans-serif", minWidth: "2ch" }}>
               {timeLeft}
             </span>
@@ -122,7 +129,14 @@ export default function QuizScreen() {
       {/* Progress bar */}
       <div className="flex-shrink-0 px-4 pt-3 pb-1">
         <div className="flex items-center gap-3">
-          <div className="flex-1 progress-bar-track">
+          <div
+            className="flex-1 progress-bar-track"
+            role="progressbar"
+            aria-valuenow={currentQuestionIndex}
+            aria-valuemin={0}
+            aria-valuemax={totalQuestions}
+            aria-label={`שאלה ${currentQuestionIndex + 1} מתוך ${totalQuestions}`}
+          >
             <div
               className="progress-bar-fill"
               style={{ width: `${progress}%` }}
@@ -151,14 +165,27 @@ export default function QuizScreen() {
       {/* Question area */}
       <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
         {/* Arena badge */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span
             className="badge-pill"
             style={{ background: "rgba(255, 165, 0, 0.15)", color: "var(--primary)", border: "1px solid rgba(255, 165, 0, 0.25)" }}
           >
-            <Zap size={10} />
+            <Zap size={10} aria-hidden="true" />
             {currentQuestion.arena}
           </span>
+          {currentSession.isDemo && (
+            <span
+              className="badge-pill"
+              style={{
+                background: "rgba(183, 146, 79, 0.18)",
+                color: "var(--accent)",
+                border: "1px solid rgba(183, 146, 79, 0.35)",
+              }}
+            >
+              <FlaskConical size={10} aria-hidden="true" />
+              שאלת הדגמה
+            </span>
+          )}
           {currentQuestion.difficulty && (
             <span
               className="badge-pill"
@@ -238,27 +265,30 @@ export default function QuizScreen() {
           })}
         </div>
 
-        {/* Timeout message */}
-        {isShowingFeedback && lastAnswer?.selectedIndex === -1 && (
-          <div
-            className="feedback-box rounded-xl p-4 flex items-center gap-3"
-            style={{ background: "rgba(255, 165, 0, 0.15)", border: "1px solid rgba(255, 165, 0, 0.3)" }}
-          >
-            <AlertTriangle size={20} style={{ color: "var(--warning)", flexShrink: 0 }} />
-            <p className="text-sm font-semibold" style={{ color: "var(--warning)" }}>
-              הזמן נגמר! לא נבחרה תשובה.
-            </p>
-          </div>
-        )}
+        {/* Feedback region — announced to screen readers on change. */}
+        <div aria-live="polite" aria-atomic="true">
+          {/* Timeout message */}
+          {isShowingFeedback && lastAnswer?.selectedIndex === -1 && (
+            <div
+              className="feedback-box rounded-xl p-4 flex items-center gap-3"
+              style={{ background: "rgba(255, 165, 0, 0.15)", border: "1px solid rgba(255, 165, 0, 0.3)" }}
+            >
+              <AlertTriangle size={20} style={{ color: "var(--warning)", flexShrink: 0 }} aria-hidden="true" />
+              <p className="text-sm font-semibold" style={{ color: "var(--warning)" }}>
+                הזמן נגמר! לא נבחרה תשובה.
+              </p>
+            </div>
+          )}
 
-        {/* Feedback box */}
-        {isShowingFeedback && lastAnswer && lastAnswer.selectedIndex !== -1 && (
-          <FeedbackBox
-            isCorrect={lastAnswer.isCorrect}
-            selectedAnswer={currentQuestion.options[lastAnswer.selectedIndex] || ""}
-            correctAnswer={currentQuestion.options[currentQuestion.correctIndex]}
-          />
-        )}
+          {/* Feedback box */}
+          {isShowingFeedback && lastAnswer && lastAnswer.selectedIndex !== -1 && (
+            <FeedbackBox
+              isCorrect={lastAnswer.isCorrect}
+              selectedAnswer={currentQuestion.options[lastAnswer.selectedIndex] || ""}
+              correctAnswer={currentQuestion.options[currentQuestion.correctIndex]}
+            />
+          )}
+        </div>
       </div>
 
       {/* Footer — next button */}

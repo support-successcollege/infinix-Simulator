@@ -141,50 +141,66 @@
   --safe-right: env(safe-area-inset-right, 0px);
 }
 
-/* ── Light theme ── */
+/* ── Light theme ──
+   Accent hues are deepened rather than reused from the dark palette:
+   `--primary` doubles as a text colour throughout the app, and the
+   dark theme's #ffa500 only reaches ~1.9:1 against a light surface.
+   The amber below clears WCAG AA (4.5:1) both as body text on
+   `--background` and as a button fill under `--primary-foreground`. */
 html[data-theme="light"] {
-  --background: #000000;
-  --foreground: #ffffff;
-  --card: #101010;
-  --card-foreground: #ffffff;
-  --popover: #101010;
-  --popover-foreground: #ffffff;
-  --primary: #ffa500;
-  --primary-foreground: #000000;
-  --secondary: #1a1a1a;
-  --secondary-foreground: #dfdfdf;
-  --muted: #151515;
-  --muted-foreground: #c2c2c2;
-  --accent: #b7924f;
-  --accent-foreground: #000000;
-  --destructive: #dc2626;
+  --background: #fafafa;
+  --foreground: #111111;
+  --card: #ffffff;
+  --card-foreground: #111111;
+  --popover: #ffffff;
+  --popover-foreground: #111111;
+
+  --primary: #a35a00;
+  --primary-foreground: #ffffff;
+
+  --secondary: #f0f0f0;
+  --secondary-foreground: #1a1a1a;
+
+  --muted: #f1f1f1;
+  --muted-foreground: #5a5a5a;
+
+  --accent: #7a5c22;
+  --accent-foreground: #ffffff;
+
+  --destructive: #c02626;
   --destructive-foreground: #ffffff;
-  --success: #22c55e;
+
+  --success: #15803d;
   --success-foreground: #ffffff;
-  --warning: #ffa500;
-  --warning-foreground: #000000;
-  --border: #2a2a2a;
-  --input: #2f2f2f;
-  --ring: #ffa500;
-  --chart-1: #ffa500;
-  --chart-2: #22c55e;
-  --chart-3: #b7924f;
-  --chart-4: #dfdfdf;
-  --chart-5: #c2c2c2;
-  --sidebar: #0a0a0a;
-  --sidebar-foreground: #dfdfdf;
-  --sidebar-primary: #ffa500;
-  --sidebar-primary-foreground: #000000;
-  --sidebar-accent: #1a1a1a;
-  --sidebar-accent-foreground: #dfdfdf;
-  --sidebar-border: #242424;
-  --sidebar-ring: #ffa500;
-  --tf-surface: #121212;
-  --tf-surface-soft: #0e0e0e;
-  --tf-border: #2a2a2a;
-  --tf-border-strong: #3a3a3a;
-  --tf-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
-  --tf-accent-line: #b7924f;
+
+  --warning: #a35a00;
+  --warning-foreground: #ffffff;
+
+  --border: #e2e2e2;
+  --input: #d6d6d6;
+  --ring: #a35a00;
+
+  --chart-1: #a35a00;
+  --chart-2: #15803d;
+  --chart-3: #7a5c22;
+  --chart-4: #5a5a5a;
+  --chart-5: #8a8a8a;
+
+  --sidebar: #f2f2f2;
+  --sidebar-foreground: #333333;
+  --sidebar-primary: #a35a00;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e6e6e6;
+  --sidebar-accent-foreground: #1a1a1a;
+  --sidebar-border: #dcdcdc;
+  --sidebar-ring: #a35a00;
+
+  --tf-surface: #ffffff;
+  --tf-surface-soft: #f6f6f6;
+  --tf-border: #e4e4e4;
+  --tf-border-strong: #cfcfcf;
+  --tf-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --tf-accent-line: #7a5c22;
 }
 
 /* ── Base reset ── */
@@ -226,6 +242,28 @@ html[data-theme="light"] {
   input[type="checkbox"]:not(:disabled),
   input[type="radio"]:not(:disabled) {
     cursor: pointer;
+  }
+
+  /* Keyboard focus indicator.
+     Almost every control in this app is a bare <button> with inline
+     styles, so without this rule keyboard users get no visible focus
+     at all (WCAG 2.4.7). :focus-visible keeps it off mouse clicks. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Respect the OS "reduce motion" setting. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 
   /* Scrollbar styling */
@@ -561,9 +599,28 @@ html[data-theme="light"] {
 
   .progress-bar-fill {
     height: 100%;
-    background: linear-gradient(90deg, var(--primary), oklch(0.70 0.22 300));
+    /* Brand amber → gold. The previous violet stop was left over
+       from the pre-rebrand "Midnight Gradient" palette. */
+    background: linear-gradient(90deg, var(--primary), var(--tf-accent-line));
     border-radius: 2px;
     transition: width 0.5s ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .progress-bar-fill {
+      transition: none;
+    }
+  }
+
+  /* Brand logo.
+     The artwork is white-on-transparent, which disappears against the
+     light theme's surfaces. Inverting would flip the orange glyph to
+     blue, so the logo keeps its colours and sits on a dark chip. */
+  html[data-theme="light"] .brand-logo {
+    background: #0a0a0a;
+    padding: 0.3rem 0.55rem;
+    border-radius: 0.5rem;
+    box-sizing: content-box;
   }
 
   /* Stat card */
@@ -603,9 +660,9 @@ html[data-theme="light"] {
     direction: rtl;
   }
 
-  .tf-input:focus {
+  .tf-input:focus-visible {
     border-color: var(--primary);
-    box-shadow: 0 0 0 3px oklch(0.65 0.25 280 / 20%);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 35%, transparent);
   }
 
   .tf-input::placeholder {

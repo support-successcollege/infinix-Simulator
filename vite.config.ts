@@ -8,6 +8,13 @@ import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 function normalizeBasePath(raw?: string): string {
   const value = (raw || "").trim();
   if (!value) return "/";
+  // "./" is passed through so the build can be dropped into any
+  // sub-directory without knowing its path up front. Forcing a leading
+  // slash would rewrite it to "/./" and emit absolute asset URLs,
+  // which 404 anywhere but a domain root.
+  // (Note: this still needs an HTTP server — browsers block ES modules
+  // loaded over file:// on CORS grounds, whatever the base path is.)
+  if (value === "./" || value === ".") return "./";
   const withLeadingSlash = value.startsWith("/") ? value : `/${value}`;
   return withLeadingSlash.endsWith("/") ? withLeadingSlash : `${withLeadingSlash}/`;
 }

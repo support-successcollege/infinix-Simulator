@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { RotateCcw, Home, TrendingUp, CheckCircle2, XCircle, Clock, Award } from "lucide-react";
 
-const RESULTS_BG = "https://d2xsxph8kpxj0f.cloudfront.net/310519663547397718/Pvji6kDRrPHhdwxpb2BJTp/results-bg-MC6m2ntyXenPL8zYqMWMYr.webp";
+import RESULTS_BG from "@/assets/results-bg.webp";
 
 function getScoreClass(score: number) {
   if (score >= 90) return { label: "מצוין! 🏆", color: "var(--success)", bg: "rgba(34, 197, 94, 0.15)" };

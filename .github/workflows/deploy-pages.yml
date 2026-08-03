@@ -38,6 +38,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Fail the deploy before publishing, not after.
+      - name: Typecheck
+        run: pnpm check
+
+      - name: Run tests
+        run: pnpm test
+
       - name: Build static site
         run: pnpm build:pages
 

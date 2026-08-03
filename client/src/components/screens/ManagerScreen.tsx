@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEventHandler, type RefObject } from "react";
 import { useApp, type QuestionBankData, type QuestionBankEntry } from "@/contexts/AppContext";
-import { Users, BarChart2, BookOpen, TrendingUp, Award, Clock, Search, Shield, Upload, Download, Trash2, Save, PlusCircle } from "lucide-react";
+import { Users, BarChart2, BookOpen, TrendingUp, Award, Clock, Search, Shield, ShieldAlert, Upload, Download, Trash2, Save, PlusCircle } from "lucide-react";
 import { toast } from "sonner";
 
 type Tab = "team" | "reports" | "content";
@@ -27,6 +27,7 @@ export default function ManagerScreen() {
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<"trainee" | "manager">("trainee");
+  const [isAddingMember, setIsAddingMember] = useState(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   if (user?.role !== "manager") {
@@ -55,15 +56,16 @@ export default function ManagerScreen() {
     return { totalMembers, activeThisWeek, avgTeamScore, totalSessions };
   }, [authUsers, sessions]);
 
-  const addMember = () => {
+  const addMember = async () => {
     const name = newName.trim();
     const email = newEmail.trim().toLowerCase();
     if (!name || !email || !newPassword) {
       toast.error("נא להזין שם, מייל וסיסמה");
       return;
     }
+    setIsAddingMember(true);
     try {
-      createAuthUser({ name, email, password: newPassword, role: newRole });
+      await createAuthUser({ name, email, password: newPassword, role: newRole });
       setNewName("");
       setNewEmail("");
       setNewPassword("");
@@ -71,18 +73,37 @@ export default function ManagerScreen() {
       toast.success("משתמש נוסף בהצלחה");
     } catch (err) {
       toast.error((err as Error)?.message || "יצירת המשתמש נכשלה");
+    } finally {
+      setIsAddingMember(false);
     }
   };
 
   const exportReportCsv = () => {
+    // Quote every field: names and arena titles routinely contain
+    // commas and quotes, which would otherwise shift columns.
+    const cell = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const row = (...cells: unknown[]) => cells.map(cell).join(",");
+
     const rows = [
-      "member_name,email,role,status,sessions,avg_score,last_active",
-      ...authUsers.map(m => `${m.name},${m.email},${m.role},active,0,0,`),
+      row("member_name", "email", "role"),
+      ...authUsers.map(m => row(m.name, m.email, m.role)),
       "",
-      "session_id,arena,mode,score,start_time,end_time",
-      ...sessions.map(s => `${s.id},${s.arenaName},${s.mode},${s.score},${new Date(s.startTime).toISOString()},${s.endTime ? new Date(s.endTime).toISOString() : ""}`),
+      row("session_id", "arena", "mode", "score", "is_demo", "start_time", "end_time"),
+      ...sessions.map(s =>
+        row(
+          s.id,
+          s.arenaName,
+          s.mode,
+          s.score,
+          s.isDemo ? "yes" : "no",
+          new Date(s.startTime).toISOString(),
+          s.endTime ? new Date(s.endTime).toISOString() : ""
+        )
+      ),
     ];
-    const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" });
+
+    // Excel needs a BOM to read UTF-8 Hebrew correctly.
+    const blob = new Blob(["﻿", rows.join("\r\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -165,7 +186,29 @@ export default function ManagerScreen() {
                 <option value="trainee">סטודנט</option>
                 <option value="manager">מנהל</option>
               </select>
-              <button onClick={addMember} className="rounded-xl px-3 py-2 font-semibold text-sm" style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}>הוסף משתמש</button>
+              <button
+                onClick={addMember}
+                disabled={isAddingMember}
+                className="rounded-xl px-3 py-2 font-semibold text-sm"
+                style={{
+                  background: isAddingMember ? "var(--muted)" : "var(--primary)",
+                  color: isAddingMember ? "var(--muted-foreground)" : "var(--primary-foreground)",
+                }}
+              >
+                {isAddingMember ? "מוסיף..." : "הוסף משתמש"}
+              </button>
+            </div>
+
+            {/* Be explicit about what this account system is and isn't. */}
+            <div
+              className="rounded-xl p-3 flex items-start gap-2"
+              style={{ background: "rgba(255, 165, 0, 0.1)", border: "1px solid rgba(255, 165, 0, 0.3)" }}
+            >
+              <ShieldAlert size={16} style={{ color: "var(--primary)", flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
+              <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+                המשתמשים נשמרים בדפדפן הזה בלבד (סיסמאות מגובבות, לא בטקסט גלוי) ואינם
+                מסתנכרנים בין מכשירים. זהו שער תצוגה — אל תאחסן מאחוריו מידע רגיש.
+              </p>
             </div>
 
             <div className="relative">
