@@ -71,6 +71,17 @@ const BOOTSTRAP_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || "support@successcol
   .toLowerCase();
 const BOOTSTRAP_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "infinix-setup-2024";
 
+// ── Shared question bank ───────────────────────────────────────
+/**
+ * One bank for everyone, served by `api/question-bank.ts`. In dev the
+ * same path is handled by a middleware in vite.config.ts, so the
+ * publish flow can be exercised without deploying.
+ */
+const SHARED_BANK_ENDPOINT = "/api/question-bank";
+
+/** Which of the layered sources produced the bank currently in use. */
+export type BankSource = "shared" | "local" | "bundled" | "none";
+
 const DEFAULT_TRAINING_CONFIG: TrainingConfig = {
   mode: "full",
   questionCount: 10,
@@ -166,6 +177,18 @@ interface AppContextValue {
   deleteQuestionBankCategory: (categoryName: string) => void;
   resetQuestionBankContent: () => Promise<void>;
 
+  // Shared bank (published for every student)
+  /** Which source produced the bank currently on screen. */
+  bankSource: BankSource;
+  /** True when a bank is published, regardless of what is on screen. */
+  sharedBankExists: boolean;
+  /** The manager's publish token, held for convenience only. */
+  adminToken: string;
+  setAdminToken: (token: string) => void;
+  publishQuestionBank: (file: File) => Promise<void>;
+  unpublishQuestionBank: () => Promise<void>;
+  refreshQuestionBank: () => Promise<void>;
+
   // Quiz
   currentSession: QuizSession | null;
   startQuiz: () => { ok: boolean; error?: string };
@@ -200,6 +223,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     reviveSessions(readJson<unknown>(STORAGE_KEYS.history, []))
   );
   const [questionBank, setQuestionBank] = useState<QuestionBankData | null>(null);
+  const [bankSource, setBankSource] = useState<BankSource>("none");
+  const [sharedBankExists, setSharedBankExists] = useState(false);
+  const [adminToken, setAdminTokenState] = useState<string>(() =>
+    readJson<string>(STORAGE_KEYS.adminToken, "")
+  );
 
   const [trainingConfig, setTrainingConfigState] = useState<TrainingConfig>(() => ({
     ...DEFAULT_TRAINING_CONFIG,
@@ -348,18 +376,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // ── Question bank loading ────────────────────────────────────
 
-  const getQuestionBankEndpoints = useCallback(() => {
+  /**
+   * Where the active bank came from. Worth surfacing: a manager who
+   * has a local override in this browser sees different questions
+   * from the students reading the published one, and without a
+   * readout that difference is invisible until someone complains.
+   */
+  const bundledBankUrls = useCallback(() => {
     const baseUrl = import.meta.env.BASE_URL || "/";
     const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
     return [
-      "/api/question-bank",
       `${normalizedBase}question_bank_infinitycloser.json`,
       "question_bank_infinitycloser.json",
     ];
   }, []);
 
-  const fetchQuestionBank = useCallback(async (): Promise<QuestionBankData | null> => {
-    for (const url of getQuestionBankEndpoints()) {
+  /** The bank published for everyone, or null when none is set. */
+  const fetchSharedBank = useCallback(async (): Promise<QuestionBankData | null> => {
+    try {
+      const res = await fetch(SHARED_BANK_ENDPOINT, { cache: "no-store" });
+      if (!res.ok) return null;
+      return parseAnyQuestionBank(await res.json());
+    } catch {
+      return null;
+    }
+  }, []);
+
+  /** The copy compiled into the deployment. */
+  const fetchBundledBank = useCallback(async (): Promise<QuestionBankData | null> => {
+    for (const url of bundledBankUrls()) {
       try {
         const res = await fetch(url);
         if (!res.ok) continue;
@@ -370,29 +415,55 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     }
     return null;
-  }, [getQuestionBankEndpoints]);
+  }, [bundledBankUrls]);
+
+  const loadQuestionBank = useCallback(async (): Promise<{
+    bank: QuestionBankData | null;
+    source: BankSource;
+    sharedExists: boolean;
+  }> => {
+    const shared = await fetchSharedBank();
+
+    // A local import wins for whoever set it — it was a deliberate
+    // act in this browser — but the UI says so, and offers a way out.
+    const storedRaw = readJson<unknown>(STORAGE_KEYS.questionBank, null);
+    if (storedRaw) {
+      const parsed = parseAnyQuestionBank(storedRaw);
+      if (parsed) return { bank: parsed, source: "local", sharedExists: Boolean(shared) };
+    }
+
+    if (shared) return { bank: shared, source: "shared", sharedExists: true };
+
+    const bundled = await fetchBundledBank();
+    return {
+      bank: bundled,
+      source: bundled ? "bundled" : "none",
+      sharedExists: false,
+    };
+  }, [fetchSharedBank, fetchBundledBank]);
+
+  const refreshQuestionBank = useCallback(async () => {
+    const { bank, source, sharedExists } = await loadQuestionBank();
+    setQuestionBank(bank);
+    setBankSource(source);
+    setSharedBankExists(sharedExists);
+  }, [loadQuestionBank]);
 
   useEffect(() => {
     let cancelled = false;
 
-    const loadBank = async () => {
-      const storedRaw = readJson<unknown>(STORAGE_KEYS.questionBank, null);
-      if (storedRaw) {
-        const parsed = parseAnyQuestionBank(storedRaw);
-        if (parsed && !cancelled) {
-          setQuestionBank(parsed);
-          return;
-        }
-      }
-      const fetched = await fetchQuestionBank();
-      if (fetched && !cancelled) setQuestionBank(fetched);
-    };
+    (async () => {
+      const { bank, source, sharedExists } = await loadQuestionBank();
+      if (cancelled) return;
+      setQuestionBank(bank);
+      setBankSource(source);
+      setSharedBankExists(sharedExists);
+    })();
 
-    loadBank();
     return () => {
       cancelled = true;
     };
-  }, [fetchQuestionBank]);
+  }, [loadQuestionBank]);
 
   // ── Derived content ──────────────────────────────────────────
 
@@ -624,8 +695,72 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const clearImportedQuestionBank = useCallback(() => {
     removeKey(STORAGE_KEYS.questionBank);
-    setQuestionBank(null);
+    // Dropping the override falls back through the same ladder the
+    // app boots with, rather than leaving the screen empty.
+    void refreshQuestionBank();
+  }, [refreshQuestionBank]);
+
+  // ── Publishing ───────────────────────────────────────────────
+
+  const setAdminToken = useCallback((token: string) => {
+    const trimmed = token.trim();
+    setAdminTokenState(trimmed);
+    if (trimmed) writeJson(STORAGE_KEYS.adminToken, trimmed);
+    else removeKey(STORAGE_KEYS.adminToken);
   }, []);
+
+  /** Reads the server's Hebrew error text when it sent one. */
+  const errorFrom = async (res: Response, fallback: string) => {
+    try {
+      const body = await res.json();
+      return typeof body?.error === "string" ? body.error : fallback;
+    } catch {
+      return fallback;
+    }
+  };
+
+  /**
+   * Publish a bank for every student. The file is parsed and
+   * validated here first, so an unusable bank is rejected before it
+   * can replace a working one.
+   */
+  const publishQuestionBank = useCallback(
+    async (file: File) => {
+      if (!adminToken) throw new Error("נדרש טוקן ניהול לפרסום");
+
+      const raw = JSON.parse(await file.text());
+      if (!parseAnyQuestionBank(raw)) throw new Error("מבנה JSON לא תקין");
+
+      const res = await fetch(SHARED_BANK_ENDPOINT, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify(raw),
+      });
+      if (!res.ok) throw new Error(await errorFrom(res, "פרסום המאגר נכשל"));
+
+      // A local override would keep shadowing what was just published,
+      // which is the one moment it must not: the manager needs to see
+      // exactly what the students now see.
+      removeKey(STORAGE_KEYS.questionBank);
+      await refreshQuestionBank();
+    },
+    [adminToken, refreshQuestionBank]
+  );
+
+  const unpublishQuestionBank = useCallback(async () => {
+    if (!adminToken) throw new Error("נדרש טוקן ניהול");
+
+    const res = await fetch(SHARED_BANK_ENDPOINT, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    if (!res.ok) throw new Error(await errorFrom(res, "ביטול הפרסום נכשל"));
+
+    await refreshQuestionBank();
+  }, [adminToken, refreshQuestionBank]);
 
   const deleteQuestionBankCategory = useCallback(
     (categoryName: string) => {
@@ -645,8 +780,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const resetQuestionBankContent = useCallback(async () => {
     removeKey(STORAGE_KEYS.questionBank);
-    setQuestionBank(await fetchQuestionBank());
-  }, [fetchQuestionBank]);
+    await refreshQuestionBank();
+  }, [refreshQuestionBank]);
 
   // ── Quiz flow ────────────────────────────────────────────────
 
@@ -790,6 +925,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       replaceQuestionBank,
       deleteQuestionBankCategory,
       resetQuestionBankContent,
+      bankSource,
+      sharedBankExists,
+      adminToken,
+      setAdminToken,
+      publishQuestionBank,
+      unpublishQuestionBank,
+      refreshQuestionBank,
       currentSession,
       startQuiz,
       submitAnswer,
@@ -828,6 +970,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       replaceQuestionBank,
       deleteQuestionBankCategory,
       resetQuestionBankContent,
+      bankSource,
+      sharedBankExists,
+      adminToken,
+      setAdminToken,
+      publishQuestionBank,
+      unpublishQuestionBank,
+      refreshQuestionBank,
       currentSession,
       startQuiz,
       submitAnswer,

@@ -13,9 +13,8 @@ import { useLocation } from "wouter";
 import { useApp } from "@/contexts/AppContext";
 import { validatePasswordStrength } from "@/lib/auth";
 import { toast } from "sonner";
-import { Eye, EyeOff, Zap, Target, TrendingUp, ShieldAlert } from "lucide-react";
-import brandLogo from "@/assets/logo_black_nobg.png";
-import authBg from "@/assets/auth-bg.webp";
+import { Eye, EyeOff, ShieldAlert } from "lucide-react";
+import Wordmark from "@/components/Wordmark";
 
 type Stage = "credentials" | "rotate-password";
 
@@ -87,78 +86,76 @@ export default function AuthScreen() {
 
   return (
     <div className="app-shell" style={{ direction: "rtl" }}>
-      {/* Left panel — hero */}
+      {/* Left panel — an ink plate carrying the masthead. The
+          photograph it replaces was doing nothing the type cannot,
+          and it fought the paper on the other half of the split. */}
       <div
-        className="hidden lg:flex flex-col justify-between flex-1 relative overflow-hidden"
-        style={{
-          backgroundImage: `url(${authBg})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundColor: "#0a0a0a",
-        }}
+        className="hidden lg:flex flex-col justify-between flex-1"
+        style={{ background: "#16171a", color: "#f2f1ed" }}
       >
-        <div
-          className="absolute inset-0"
-          style={{ background: "linear-gradient(135deg, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.65) 100%)" }}
-        />
-
-        <div className="relative z-10 p-10">
-          <img src={brandLogo} alt="INFINIX" className="h-12 w-auto" />
+        <div className="p-10">
+          <Wordmark size="lg" tone="onDark" />
         </div>
 
-        <div className="relative z-10 p-10 pb-16">
-          <h1
-            className="text-5xl font-black text-white mb-4 leading-tight"
-            style={{ fontFamily: "Heebo, sans-serif" }}
-          >
+        <div className="p-10 pb-14">
+          <p className="eyebrow mb-5" style={{ color: "#8d8f95" }}>סימולטור אימון מכירות</p>
+          <h1 className="t-display mb-5" style={{ fontSize: "clamp(2.4rem, 3.4vw, 3.4rem)" }}>
             אמן את כישורי
             <br />
-            <span style={{ color: "var(--primary)" }}>המכירות שלך</span>
+            המכירות שלך
           </h1>
-          <p className="text-lg mb-8" style={{ color: "#dfdfdf" }}>
-            סימולטור אימון מכירות מתקדם. שאלות, משוב, ניתוח ביצועים — הכל במקום אחד.
+          <p className="text-base mb-9 max-w-md" style={{ color: "#b9bbc0" }}>
+            שאלות מהשטח, משוב מיידי אחרי כל תשובה, וניתוח ביצועים לאורך זמן.
           </p>
-          <div className="flex flex-col gap-4">
+
+          {/* A numbered list under rules — the same device the app
+              uses for its sections. */}
+          <div style={{ borderTop: "1px solid #33363c" }}>
             {[
-              { icon: Target, text: "זירות התמחות מרובות" },
-              { icon: TrendingUp, text: "מעקב ביצועים בזמן אמת" },
-              { icon: Zap, text: "משוב מיידי אחרי כל תשובה" },
-            ].map(({ icon: Icon, text }) => (
-              <div key={text} className="flex items-center gap-3">
-                <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background: "rgba(255, 165, 0, 0.18)", border: "1px solid rgba(255, 165, 0, 0.4)" }}
-                >
-                  <Icon size={16} style={{ color: "var(--primary)" }} aria-hidden="true" />
-                </div>
-                <span className="text-sm font-medium" style={{ color: "#dfdfdf" }}>
-                  {text}
+              "זירות התמחות מרובות",
+              "מעקב ביצועים בזמן אמת",
+              "משוב מיידי אחרי כל תשובה",
+            ].map((text, i) => (
+              <div
+                key={text}
+                className="flex items-baseline gap-4 py-3"
+                style={{ borderBottom: "1px solid #33363c" }}
+              >
+                <span className="t-numeric text-xs" style={{ color: "#8d8f95" }}>
+                  {String(i + 1).padStart(2, "0")}
                 </span>
+                <span className="text-sm">{text}</span>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Right panel — auth form */}
+      {/* Right panel — auth form.
+          The panel fills the viewport below the lg breakpoint, where
+          the hero is hidden. Without an inner measure the fields
+          stretched the full width of a tablet — a 900px-wide password
+          box. The form keeps its own comfortable column and centres
+          inside whatever space the panel has. */}
       <div
-        className="flex flex-col justify-center flex-1 lg:max-w-md w-full p-8 lg:p-12 overflow-y-auto"
+        className="flex flex-col justify-center items-center flex-1 lg:max-w-md w-full p-8 lg:p-12 overflow-y-auto"
         style={{ background: "var(--background)" }}
       >
-        <div className="flex items-center gap-3 mb-10 lg:hidden">
-          <img src={brandLogo} alt="INFINIX" className="brand-logo h-10 w-auto" />
+        <div className="w-full max-w-sm lg:max-w-none">
+        <div className="mb-10 lg:hidden">
+          <Wordmark size="lg" />
         </div>
 
         {stage === "credentials" ? (
           <>
             <div className="mb-8">
-              <h1
-                className="text-3xl font-black mb-2"
-                style={{ color: "var(--foreground)", fontFamily: "Heebo, sans-serif" }}
-              >
+              <p className="eyebrow mb-2">כניסה</p>
+              <h1 className="t-title mb-2" style={{ color: "var(--foreground)" }}>
                 ברוך הבא
               </h1>
-              <p style={{ color: "var(--muted-foreground)" }}>התחבר עם המשתמש שהוגדר עבורך</p>
+              <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
+                התחבר עם המשתמש שהוגדר עבורך
+              </p>
             </div>
 
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -218,12 +215,7 @@ export default function AuthScreen() {
               <button
                 type="submit"
                 disabled={submitDisabled}
-                className="w-full py-3 rounded-xl font-bold text-base mt-2 transition-all"
-                style={{
-                  background: submitDisabled ? "var(--muted)" : "var(--primary)",
-                  color: submitDisabled ? "var(--muted-foreground)" : "var(--primary-foreground)",
-                  boxShadow: submitDisabled ? "none" : "0 0 20px rgba(255, 165, 0, 0.35)",
-                }}
+                className="btn-primary w-full text-base mt-2"
               >
                 {isLoading ? "מתחבר..." : !authReady ? "טוען..." : "התחבר"}
               </button>
@@ -236,22 +228,22 @@ export default function AuthScreen() {
         ) : (
           <>
             <div
-              className="rounded-xl p-4 mb-6 flex items-start gap-3"
+              className="p-4 mb-6 flex items-start gap-3"
               style={{
-                background: "rgba(255, 165, 0, 0.12)",
-                border: "1px solid rgba(255, 165, 0, 0.4)",
+                background: "var(--tint-primary-weak)",
+                borderInlineStart: "3px solid var(--accent)",
               }}
             >
               <ShieldAlert
-                size={18}
-                style={{ color: "var(--primary)", flexShrink: 0, marginTop: 2 }}
+                size={16}
+                style={{ color: "var(--accent)", flexShrink: 0, marginTop: 3 }}
                 aria-hidden="true"
               />
               <div>
-                <div className="text-sm font-bold" style={{ color: "var(--primary)" }}>
+                <div className="eyebrow mb-1" style={{ color: "var(--accent)" }}>
                   נדרשת החלפת סיסמה
                 </div>
-                <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
+                <div className="text-sm" style={{ color: "var(--foreground)" }}>
                   זו סיסמת ברירת המחדל של ההתקנה. בחר סיסמה חדשה כדי להמשיך — לאחר מכן
                   סיסמת ברירת המחדל תפסיק לעבוד.
                 </div>
@@ -305,18 +297,14 @@ export default function AuthScreen() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3 rounded-xl font-bold text-base mt-2 transition-all"
-                style={{
-                  background: isLoading ? "var(--muted)" : "var(--primary)",
-                  color: isLoading ? "var(--muted-foreground)" : "var(--primary-foreground)",
-                  boxShadow: isLoading ? "none" : "0 0 20px rgba(255, 165, 0, 0.35)",
-                }}
+                className="btn-primary w-full text-base mt-2"
               >
                 {isLoading ? "שומר..." : "החלף סיסמה והמשך"}
               </button>
             </form>
           </>
         )}
+        </div>
       </div>
     </div>
   );

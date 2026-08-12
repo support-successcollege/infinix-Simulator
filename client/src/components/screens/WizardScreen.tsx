@@ -6,10 +6,8 @@
 
 import { useState, useMemo } from "react";
 import { useApp, TrainingMode } from "@/contexts/AppContext";
-import { CheckCircle2, ChevronRight, ChevronLeft, Search, Zap, Clock, Hash, Play, X, FlaskConical } from "lucide-react";
+import { CheckCircle2, ChevronRight, ChevronLeft, Search, Play, X, FlaskConical, Hash } from "lucide-react";
 import { toast } from "sonner";
-
-import ARENA_BG from "@/assets/arena-bg.webp";
 
 const TRAINING_MODES: { id: TrainingMode; label: string; desc: string; icon: string }[] = [
   { id: "full", label: "מבחן מלא", desc: "מבחן מקיף עם כל הנושאים", icon: "🎯" },
@@ -50,36 +48,29 @@ export default function WizardScreen() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ direction: "rtl" }}>
-      {/* Header */}
-      <div
-        className="relative flex-shrink-0"
-        style={{
-          backgroundImage: `url(${ARENA_BG})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center 30%",
-        }}
-      >
-        <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0, 0, 0, 0.8) 0%, var(--background) 100%)" }} />
-        <div className="relative z-10 px-4 pt-4 pb-6">
+      {/* Masthead */}
+      <div className="masthead flex-shrink-0">
+        <div className="screen-body px-4 sm:px-6 pt-5 pb-4">
           <div className="flex items-center justify-between mb-4">
             <button
               onClick={() => setScreen("hub")}
-              className="flex items-center gap-1 text-sm font-semibold"
-              style={{ color: "var(--primary)" }}
+              className="flex items-center gap-1 text-sm font-semibold py-1"
+              style={{ color: "var(--accent)" }}
             >
-              <ChevronRight size={16} />
+              <ChevronRight size={15} />
               חזרה
             </button>
-            <span className="text-xs font-semibold" style={{ color: "#c2c2c2" }}>
-              אשף הכנה לאימון
-            </span>
+            <span className="eyebrow">אשף הכנה לאימון</span>
           </div>
 
-          {/* Step indicators */}
-          <div className="flex items-center justify-center gap-2">
+          {/* Step indicators. State is carried by the outline and the
+              fill, not by three different colours — a completed step
+              is outlined in ink, the live one is filled with it. */}
+          <div className="flex items-center gap-2">
             {([1, 2, 3] as const).map((s) => {
               const isActive = step === s;
               const isCompleted = step > s;
+              const stateClass = isActive ? "active" : isCompleted ? "completed" : "inactive";
               return (
                 <button
                   key={s}
@@ -88,15 +79,12 @@ export default function WizardScreen() {
                       setStep(s);
                     }
                   }}
-                  className="wizard-step-btn"
-                  style={{
-                    background: isActive ? "var(--primary)" : isCompleted ? "rgba(34, 197, 94, 0.2)" : "var(--muted)",
-                    color: isActive ? "var(--primary-foreground)" : isCompleted ? "var(--success)" : "var(--muted-foreground)",
-                    boxShadow: isActive ? "0 0 16px rgba(255, 165, 0, 0.35)" : "none",
-                    border: isCompleted ? "1px solid rgba(34, 197, 94, 0.3)" : "1px solid transparent",
-                  }}
+                  className={`wizard-step-btn ${stateClass}`}
+                  aria-current={isActive ? "step" : undefined}
                 >
-                  {isCompleted ? <CheckCircle2 size={14} /> : <span style={{ fontFamily: "Inter, sans-serif", fontWeight: 700 }}>{s}</span>}
+                  {isCompleted
+                    ? <CheckCircle2 size={13} aria-hidden="true" />
+                    : <span className="t-numeric">{String(s).padStart(2, "0")}</span>}
                   <span>{stepLabels[s - 1]}</span>
                 </button>
               );
@@ -124,34 +112,26 @@ export default function WizardScreen() {
       </div>
 
       {/* Footer navigation */}
-      <div
-        className="flex-shrink-0 p-4"
-        style={{ borderTop: "1px solid var(--tf-border)", background: "var(--background)" }}
-      >
+      <div className="flex-shrink-0 p-4 sm:px-6 tf-chrome tf-chrome-bottom">
+        {/* The footer tracks the measure of the step above it, so the
+            Back/Next pair sits under the content rather than at the
+            window's edges. */}
+        <div className={step === 2 ? "screen-body-wide" : "screen-form"}>
         {step === 2 ? (
           <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3">
             <div className="min-w-0">
-              <div className="text-[10px] font-bold tracking-[0.08em] uppercase" style={{ color: "var(--muted-foreground)" }}>יעד נוכחי</div>
+              <div className="t-caption font-bold uppercase" style={{ color: "var(--muted-foreground)", letterSpacing: "0.08em" }}>יעד נוכחי</div>
               <div className="text-sm font-black truncate" style={{ color: "var(--foreground)" }}>
                 {trainingConfig.arenaName || "לא נבחרה זירה"}
               </div>
             </div>
-            <button
-              onClick={() => setStep(1)}
-              className="px-3 py-2 rounded-xl font-semibold text-sm transition-all"
-              style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}
-            >
+            <button onClick={() => setStep(1)} className="btn-secondary text-sm">
               חזרה להגדרות
             </button>
             <button
               onClick={() => setStep(3)}
               disabled={!canProceedToConfirm}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all"
-              style={{
-                background: canProceedToConfirm ? "var(--primary)" : "var(--muted)",
-                color: canProceedToConfirm ? "var(--primary-foreground)" : "var(--muted-foreground)",
-                boxShadow: canProceedToConfirm ? "0 0 16px rgba(255, 165, 0, 0.3)" : "none",
-              }}
+              className="btn-primary text-sm"
             >
               המשך לאישור
               <ChevronLeft size={16} />
@@ -162,18 +142,13 @@ export default function WizardScreen() {
             {step > 1 ? (
               <button
                 onClick={() => setStep(s => (s - 1) as 1 | 2 | 3)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all"
-                style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}
+                className="btn-secondary text-sm"
               >
                 <ChevronRight size={16} />
                 חזרה
               </button>
             ) : (
-              <button
-                onClick={() => setScreen("hub")}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm"
-                style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}
-              >
+              <button onClick={() => setScreen("hub")} className="btn-secondary text-sm">
                 <X size={16} />
                 ביטול
               </button>
@@ -183,12 +158,7 @@ export default function WizardScreen() {
               <button
                 onClick={() => setStep(s => (s + 1) as 1 | 2 | 3)}
                 disabled={step === 1 ? !canProceedToArena : !canProceedToConfirm}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all"
-                style={{
-                  background: (step === 1 ? canProceedToArena : canProceedToConfirm) ? "var(--primary)" : "var(--muted)",
-                  color: (step === 1 ? canProceedToArena : canProceedToConfirm) ? "var(--primary-foreground)" : "var(--muted-foreground)",
-                  boxShadow: (step === 1 ? canProceedToArena : canProceedToConfirm) ? "0 0 16px rgba(255, 165, 0, 0.3)" : "none",
-                }}
+                className="btn-primary text-sm"
               >
                 המשך
                 <ChevronLeft size={16} />
@@ -196,12 +166,7 @@ export default function WizardScreen() {
             ) : (
               <button
                 onClick={handleStart}
-                className="flex items-center gap-2 px-6 py-3 rounded-xl font-black text-base transition-all"
-                style={{
-                  background: "var(--success)",
-                  color: "var(--success-foreground)",
-                  boxShadow: "0 0 24px rgba(34, 197, 94, 0.4)",
-                }}
+                className="btn-primary text-base"
               >
                 <Play size={18} />
                 התחל מבחן
@@ -209,6 +174,7 @@ export default function WizardScreen() {
             )}
           </div>
         )}
+        </div>
       </div>
     </div>
   );
@@ -221,87 +187,103 @@ function Step1Settings({ config, setConfig }: {
   setConfig: ReturnType<typeof useApp>["setTrainingConfig"];
 }) {
   return (
-    <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-5">
-      {/* Training mode */}
-      <div>
-        <h3 className="text-sm font-bold mb-3" style={{ color: "var(--foreground)" }}>
-          <Zap size={14} className="inline ml-1" style={{ color: "var(--primary)" }} />
-          מצב אימון
-        </h3>
-        <div className="flex flex-col gap-2">
-          {TRAINING_MODES.map(mode => (
-            <button
-              key={mode.id}
-              onClick={() => setConfig({ mode: mode.id })}
-              className="flex items-center gap-3 p-3 rounded-xl text-right transition-all"
-              style={{
-                background: config.mode === mode.id ? "rgba(255, 165, 0, 0.15)" : "var(--tf-surface)",
-                border: config.mode === mode.id ? "1px solid rgba(255, 165, 0, 0.5)" : "1px solid var(--tf-border)",
-                boxShadow: config.mode === mode.id ? "0 0 12px rgba(255, 165, 0, 0.15)" : "none",
-              }}
-            >
-              <span className="text-2xl">{mode.icon}</span>
-              <div className="flex-1">
-                <div className="font-bold text-sm" style={{ color: "var(--foreground)" }}>{mode.label}</div>
-                <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>{mode.desc}</div>
-              </div>
-              {config.mode === mode.id && (
-                <CheckCircle2 size={18} style={{ color: "var(--primary)", flexShrink: 0 }} />
-              )}
-            </button>
-          ))}
+    <div className="flex-1 overflow-y-auto p-4 sm:px-6">
+      <div className="screen-form flex flex-col gap-8 pt-6">
+      {/* Training mode. Selection is an ink fill, not a tint plus a
+          glow plus a tick — one signal is enough when it is total. */}
+      <section>
+        <div className="section-head">
+          <span className="section-head-index">01</span>
+          <h3 className="section-head-title">מצב אימון</h3>
         </div>
-      </div>
+        <div style={{ borderTop: "var(--rule-hair)" }}>
+          {TRAINING_MODES.map(mode => {
+            const isSelected = config.mode === mode.id;
+            return (
+              <button
+                key={mode.id}
+                onClick={() => setConfig({ mode: mode.id })}
+                aria-pressed={isSelected}
+                className="w-full flex items-center gap-3 px-3 py-3.5 text-right"
+                style={{
+                  borderBottom: "var(--rule-hair)",
+                  background: isSelected ? "var(--foreground)" : "transparent",
+                  color: isSelected ? "var(--background)" : "var(--foreground)",
+                  transition: "background-color var(--dur-fast) var(--ease-settle), color var(--dur-fast) var(--ease-settle)",
+                }}
+              >
+                <div className="flex-1">
+                  <div className="font-semibold text-sm">{mode.label}</div>
+                  <div
+                    className="t-caption"
+                    style={{ color: isSelected ? "inherit" : "var(--muted-foreground)", opacity: isSelected ? 0.75 : 1 }}
+                  >
+                    {mode.desc}
+                  </div>
+                </div>
+                {isSelected && <CheckCircle2 size={16} className="flex-shrink-0" aria-hidden="true" />}
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
       {/* Question count */}
-      <div>
-        <h3 className="text-sm font-bold mb-3" style={{ color: "var(--foreground)" }}>
-          <Hash size={14} className="inline ml-1" style={{ color: "var(--primary)" }} />
-          כמות שאלות
-        </h3>
-        <div className="flex gap-2 flex-wrap">
-          {QUESTION_COUNTS.map(count => (
-            <button
-              key={count}
-              onClick={() => setConfig({ questionCount: count })}
-              className="px-4 py-2 rounded-xl font-bold text-sm transition-all"
-              style={{
-                background: config.questionCount === count ? "var(--primary)" : "var(--tf-surface)",
-                color: config.questionCount === count ? "var(--primary-foreground)" : "var(--foreground)",
-                border: config.questionCount === count ? "1px solid transparent" : "1px solid var(--tf-border)",
-                boxShadow: config.questionCount === count ? "0 0 12px rgba(255, 165, 0, 0.3)" : "none",
-                fontFamily: "Inter, sans-serif",
-              }}
-            >
-              {count}
-            </button>
-          ))}
+      <section>
+        <div className="section-head">
+          <span className="section-head-index">02</span>
+          <h3 className="section-head-title">כמות שאלות</h3>
         </div>
-      </div>
+        <div className="flex gap-2 flex-wrap">
+          {QUESTION_COUNTS.map(count => {
+            const isSelected = config.questionCount === count;
+            return (
+              <button
+                key={count}
+                onClick={() => setConfig({ questionCount: count })}
+                aria-pressed={isSelected}
+                className="btn-chip"
+                style={{
+                  background: isSelected ? "var(--foreground)" : "transparent",
+                  color: isSelected ? "var(--background)" : "var(--foreground)",
+                  borderColor: "var(--foreground)",
+                  minWidth: "3.25rem",
+                }}
+              >
+                {count}
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
       {/* Time per question */}
-      <div>
-        <h3 className="text-sm font-bold mb-3" style={{ color: "var(--foreground)" }}>
-          <Clock size={14} className="inline ml-1" style={{ color: "var(--primary)" }} />
-          זמן לשאלה
-        </h3>
-        <div className="flex gap-2 flex-wrap">
-          {TIME_OPTIONS.map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => setConfig({ timePerQuestion: opt.value })}
-              className="px-4 py-2 rounded-xl font-bold text-sm transition-all"
-              style={{
-                background: config.timePerQuestion === opt.value ? "var(--primary)" : "var(--tf-surface)",
-                color: config.timePerQuestion === opt.value ? "var(--primary-foreground)" : "var(--foreground)",
-                border: config.timePerQuestion === opt.value ? "1px solid transparent" : "1px solid var(--tf-border)",
-                boxShadow: config.timePerQuestion === opt.value ? "0 0 12px rgba(255, 165, 0, 0.3)" : "none",
-              }}
-            >
-              {opt.label}
-            </button>
-          ))}
+      <section>
+        <div className="section-head">
+          <span className="section-head-index">03</span>
+          <h3 className="section-head-title">זמן לשאלה</h3>
         </div>
+        <div className="flex gap-2 flex-wrap">
+          {TIME_OPTIONS.map(opt => {
+            const isSelected = config.timePerQuestion === opt.value;
+            return (
+              <button
+                key={opt.value}
+                onClick={() => setConfig({ timePerQuestion: opt.value })}
+                aria-pressed={isSelected}
+                className="btn-chip"
+                style={{
+                  background: isSelected ? "var(--foreground)" : "transparent",
+                  color: isSelected ? "var(--background)" : "var(--foreground)",
+                  borderColor: "var(--foreground)",
+                }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </section>
       </div>
     </div>
   );
@@ -333,11 +315,11 @@ function Step2Arena({ arenas, allArenas, selectedId, search, setSearch, onSelect
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
-      <div className="flex-shrink-0 px-4 pt-4 pb-3 border-b" style={{ borderColor: "var(--tf-border)" }}>
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+      <div className="flex-shrink-0 px-4 sm:px-6 pt-4 pb-3 border-b" style={{ borderColor: "var(--tf-border)" }}>
+        <div className="screen-body-wide flex flex-col md:flex-row md:items-end md:justify-between gap-3">
           <div>
-            <span className="badge-pill mb-2" style={{ background: "rgba(34, 197, 94, 0.15)", color: "var(--success)" }}>שלב 2 · טעינת זירה</span>
-            <h3 className="text-2xl font-black mb-1" style={{ color: "var(--foreground)", fontFamily: "Heebo, sans-serif" }}>בחר את זירת המכירה</h3>
+            <p className="eyebrow mb-2">שלב 02 · טעינת זירה</p>
+            <h3 className="t-title mb-1" style={{ color: "var(--foreground)" }}>בחר את זירת המכירה</h3>
             <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
               הסימולטור יתאים את השאלות לתחום שתבחר. מומלץ לבחור זירה אחת ולהשלים סבב מלא.
             </p>
@@ -357,45 +339,58 @@ function Step2Arena({ arenas, allArenas, selectedId, search, setSearch, onSelect
       </div>
 
       {/* Arena grid — scrollable */}
-      <div className="flex-1 overflow-y-auto px-4 pb-4">
-        <div className="flex items-center justify-between text-xs font-bold py-3" style={{ color: "var(--muted-foreground)" }}>
-          <span>{visibleLabel}</span>
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-4">
+        <div className="screen-body-wide">
+        <div className="flex items-center justify-between py-3">
+          <span className="eyebrow">{visibleLabel}</span>
           {search && (
             <button
               onClick={() => setSearch("")}
-              className="underline"
-              style={{ color: "var(--primary)", textUnderlineOffset: "3px" }}
+              className="text-xs font-semibold underline"
+              style={{ color: "var(--accent)", textUnderlineOffset: "3px" }}
             >
               הצג הכל
             </button>
           )}
         </div>
         <div className="arena-picker-grid">
-          {arenas.map(arena => (
-            <button
-              key={arena.id}
-              onClick={() => onSelect(arena.id, arena.name)}
-              className={`arena-card text-right ${selectedId === arena.id ? "selected" : ""}`}
-            >
-              {hasSoleLeader && arena.questionCount === maxQuestions && (
-                <span className="badge-pill absolute top-2 left-2" style={{ background: "rgba(34, 197, 94, 0.2)", color: "var(--success)" }}>
-                  מוביל
-                </span>
-              )}
-              <div className="text-2xl mb-2">{arena.icon}</div>
-              <div className="font-bold text-base mb-1" style={{ color: "var(--foreground)" }}>{arena.name}</div>
-              <div className="text-xs mb-2" style={{ color: "var(--muted-foreground)" }}>{arena.summary}</div>
-              <div className="flex items-center justify-between text-xs mt-3 pt-2 border-t" style={{ borderColor: "var(--tf-border)", color: "var(--muted-foreground)" }}>
-                <span>{arena.questionCount} שאלות</span>
-                <span>רמת קושי: {difficultyLabel(arena.questionCount)}</span>
-              </div>
-              {selectedId === arena.id && (
-                <div className="absolute top-2 right-2">
-                  <CheckCircle2 size={18} style={{ color: "var(--primary)" }} />
+          {arenas.map(arena => {
+            const isSelected = selectedId === arena.id;
+            return (
+              <button
+                key={arena.id}
+                onClick={() => onSelect(arena.id, arena.name)}
+                className={`arena-card text-right ${isSelected ? "selected" : ""}`}
+                aria-pressed={isSelected}
+              >
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <span className="text-xl leading-none" aria-hidden="true">{arena.icon}</span>
+                  {hasSoleLeader && arena.questionCount === maxQuestions && !isSelected && (
+                    <span className="badge-pill" style={{ color: "var(--accent)" }}>מוביל</span>
+                  )}
+                  {isSelected && <CheckCircle2 size={16} className="flex-shrink-0" aria-hidden="true" />}
                 </div>
-              )}
-            </button>
-          ))}
+                <div className="t-heading mb-1">{arena.name}</div>
+                <div
+                  className="t-caption mb-3"
+                  style={{ color: isSelected ? "inherit" : "var(--muted-foreground)", opacity: isSelected ? 0.8 : 1 }}
+                >
+                  {arena.summary}
+                </div>
+                <div
+                  className="flex items-center justify-between t-caption pt-2"
+                  style={{
+                    borderTop: `1px solid ${isSelected ? "color-mix(in srgb, currentColor 25%, transparent)" : "var(--tf-border)"}`,
+                    color: isSelected ? "inherit" : "var(--muted-foreground)",
+                    opacity: isSelected ? 0.8 : 1,
+                  }}
+                >
+                  <span><span className="t-numeric">{arena.questionCount}</span> שאלות</span>
+                  <span>קושי: {difficultyLabel(arena.questionCount)}</span>
+                </div>
+              </button>
+            );
+          })}
         </div>
         {arenas.length === 0 && (
           <div className="text-center py-12" style={{ color: "var(--muted-foreground)" }}>
@@ -403,6 +398,7 @@ function Step2Arena({ arenas, allArenas, selectedId, search, setSearch, onSelect
             <p>לא נמצאו זירות תואמות</p>
           </div>
         )}
+        </div>
       </div>
     </div>
   );
@@ -427,33 +423,28 @@ function Step3Confirm({ config, arenas, isDemoContent }: {
   const isTrimmed = available > 0 && config.questionCount > available;
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
-      <div className="text-center py-4">
-        <div className="text-5xl mb-3">{arena?.icon ?? "🎯"}</div>
-        <h2 className="text-2xl font-black mb-1" style={{ color: "var(--foreground)", fontFamily: "Heebo, sans-serif" }}>
-          {arena?.name ?? config.arenaName}
-        </h2>
-        <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>מוכן להתחיל?</p>
+    <div className="flex-1 overflow-y-auto p-4 sm:px-6">
+      <div className="screen-form flex flex-col gap-6 pt-6">
+      <div>
+        <p className="eyebrow mb-2">שלב 03 · אישור</p>
+        <h2 className="t-display mb-1">{arena?.name ?? config.arenaName}</h2>
+        <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
+          בדוק את ההגדרות לפני שהשעון מתחיל לרוץ.
+        </p>
       </div>
 
-      <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid var(--tf-border)" }}>
+      {/* The brief, set as a spec table. */}
+      <div className="data-list">
         {[
           { label: "מצב אימון", value: modeLabel },
-          { label: "כמות שאלות", value: `${actualCount} שאלות` },
+          { label: "כמות שאלות", value: `${actualCount}` },
           { label: "זמן לשאלה", value: timeLabel },
           { label: "זירה", value: arena?.name ?? config.arenaName },
-          { label: "שאלות במאגר", value: `${available || "—"} שאלות` },
-        ].map((row, i) => (
-          <div
-            key={row.label}
-            className="flex items-center justify-between px-4 py-3"
-            style={{
-              background: i % 2 === 0 ? "var(--tf-surface)" : "var(--tf-surface-soft)",
-              borderBottom: i < 4 ? "1px solid var(--tf-border)" : "none",
-            }}
-          >
-            <span className="text-sm" style={{ color: "var(--muted-foreground)" }}>{row.label}</span>
-            <span className="text-sm font-bold" style={{ color: "var(--foreground)" }}>{row.value}</span>
+          { label: "שאלות במאגר", value: `${available || "—"}` },
+        ].map(row => (
+          <div key={row.label} className="data-row">
+            <span className="data-row-label">{row.label}</span>
+            <span className="data-row-value">{row.value}</span>
           </div>
         ))}
       </div>
@@ -461,10 +452,10 @@ function Step3Confirm({ config, arenas, isDemoContent }: {
       {isDemoContent && (
         <div
           role="status"
-          className="rounded-xl p-4 flex items-start gap-3"
-          style={{ background: "rgba(255, 165, 0, 0.12)", border: "1px solid rgba(255, 165, 0, 0.4)" }}
+          className="p-4 flex items-start gap-3"
+          style={{ background: "var(--tint-primary-weak)", borderInlineStart: "3px solid var(--accent)" }}
         >
-          <FlaskConical size={18} style={{ color: "var(--primary)", flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
+          <FlaskConical size={16} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 3 }} aria-hidden="true" />
           <p className="text-sm" style={{ color: "var(--foreground)" }}>
             <strong>תוכן הדגמה</strong> — האימון ירוץ על שאלות דוגמה, לא על חומר לימוד אמיתי.
           </p>
@@ -474,10 +465,10 @@ function Step3Confirm({ config, arenas, isDemoContent }: {
       {isTrimmed && (
         <div
           role="status"
-          className="rounded-xl p-4 flex items-start gap-3"
-          style={{ background: "rgba(183, 146, 79, 0.12)", border: "1px solid rgba(183, 146, 79, 0.4)" }}
+          className="p-4 flex items-start gap-3"
+          style={{ background: "var(--tint-accent-weak)", borderInlineStart: "3px solid var(--foreground)" }}
         >
-          <Hash size={18} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
+          <Hash size={16} style={{ color: "var(--foreground)", flexShrink: 0, marginTop: 3 }} aria-hidden="true" />
           <p className="text-sm" style={{ color: "var(--foreground)" }}>
             בזירה הזו יש {available} שאלות בלבד, ולכן האימון יכלול {actualCount} שאלות ולא{" "}
             {config.questionCount}. שאלות לא חוזרות על עצמן באותו מבחן.
@@ -485,14 +476,9 @@ function Step3Confirm({ config, arenas, isDemoContent }: {
         </div>
       )}
 
-      <div
-        className="rounded-xl p-4 flex items-start gap-3"
-        style={{ background: "rgba(255, 165, 0, 0.1)", border: "1px solid rgba(255, 165, 0, 0.25)" }}
-      >
-        <Zap size={18} style={{ color: "var(--primary)", flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
-        <p className="text-sm" style={{ color: "var(--foreground)" }}>
-          לחץ <strong>התחל מבחן</strong> כדי להתחיל. לאחר תחילת המבחן לא ניתן לשנות הגדרות.
-        </p>
+      <p className="t-caption" style={{ color: "var(--muted-foreground)" }}>
+        לאחר תחילת המבחן לא ניתן לשנות הגדרות.
+      </p>
       </div>
     </div>
   );

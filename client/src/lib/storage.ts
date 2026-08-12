@@ -9,7 +9,16 @@
    ============================================================ */
 
 export const STORAGE_KEYS = {
+  /** A bank imported into this browser only — a local override. */
   questionBank: "ic_question_bank_v1",
+  /**
+   * The manager's publish token. This is a convenience so it isn't
+   * retyped on every upload; it is not a credential the app checks.
+   * The real check happens on the server (see api/question-bank.ts),
+   * so a copy sitting here grants nothing that the person holding
+   * this browser didn't already have.
+   */
+  adminToken: "ic_admin_upload_token_v1",
   authUsers: "ic_auth_users_v2",
   legacyAuthUsers: "ic_auth_users_v1",
   session: "ic_active_session_v1",

@@ -3,7 +3,7 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import fs from "node:fs";
 import path from "node:path";
-import { defineConfig, type Plugin, type ViteDevServer } from "vite";
+import { defineConfig, loadEnv, type Plugin, type ViteDevServer } from "vite";
 
 function normalizeBasePath(raw?: string): string {
   const value = (raw || "").trim();
@@ -19,31 +19,110 @@ function normalizeBasePath(raw?: string): string {
   return withLeadingSlash.endsWith("/") ? withLeadingSlash : `${withLeadingSlash}/`;
 }
 
-function localQuestionBankPlugin(): Plugin {
-  const questionBankPath = path.resolve(import.meta.dirname, "..", "question_bank_infinitycloser.json");
+/**
+ * Dev stand-in for the Vercel function in `api/question-bank.ts`.
+ *
+ * It speaks the same three verbs against a file on disk, so the
+ * publish flow can be exercised end to end locally instead of only
+ * against a deployment. Published content lands in
+ * `.local-question-bank.json` (git-ignored); when nothing has been
+ * published it falls back to the repo's own bank file, which is what
+ * the old middleware did.
+ */
+function localQuestionBankPlugin(adminToken: string): Plugin {
+  const sourcePath = path.resolve(import.meta.dirname, "..", "question_bank_infinitycloser.json");
+  const publishedPath = path.resolve(import.meta.dirname, ".local-question-bank.json");
+
+  const json = (res: import("node:http").ServerResponse, status: number, body: unknown) => {
+    res.statusCode = status;
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.end(JSON.stringify(body));
+  };
+
+  const authorized = (req: import("node:http").IncomingMessage) => {
+    if (!adminToken) return false;
+    const header = req.headers.authorization || "";
+    return header.startsWith("Bearer ") && header.slice(7) === adminToken;
+  };
+
+  const readBody = (req: import("node:http").IncomingMessage) =>
+    new Promise<string>((resolve, reject) => {
+      let raw = "";
+      req.on("data", chunk => { raw += chunk; });
+      req.on("end", () => resolve(raw));
+      req.on("error", reject);
+    });
+
   return {
     name: "local-question-bank",
     configureServer(server: ViteDevServer) {
-      server.middlewares.use("/api/question-bank", (_req, res) => {
-        if (!fs.existsSync(questionBankPath)) {
-          res.statusCode = 404;
+      server.middlewares.use("/api/question-bank", async (req, res) => {
+        if (req.method === "GET") {
+          const file = fs.existsSync(publishedPath)
+            ? publishedPath
+            : fs.existsSync(sourcePath)
+              ? sourcePath
+              : null;
+          if (!file) {
+            json(res, 404, { error: "no published bank" });
+            return;
+          }
           res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "question_bank_infinitycloser.json not found" }));
+          fs.createReadStream(file).pipe(res);
           return;
         }
-        res.setHeader("Content-Type", "application/json; charset=utf-8");
-        fs.createReadStream(questionBankPath).pipe(res);
+
+        if (req.method === "PUT" || req.method === "POST") {
+          if (!authorized(req)) {
+            json(res, 401, {
+              error: adminToken
+                ? "טוקן ניהול שגוי"
+                : "ADMIN_UPLOAD_TOKEN לא מוגדר ב-.env.local",
+            });
+            return;
+          }
+          try {
+            const parsed = JSON.parse(await readBody(req));
+            fs.writeFileSync(publishedPath, JSON.stringify(parsed, null, 2), "utf8");
+            json(res, 200, { ok: true, publishedAt: new Date().toISOString() });
+          } catch {
+            json(res, 400, { error: "JSON לא תקין" });
+          }
+          return;
+        }
+
+        if (req.method === "DELETE") {
+          if (!authorized(req)) {
+            json(res, 401, { error: "טוקן ניהול שגוי או חסר" });
+            return;
+          }
+          if (fs.existsSync(publishedPath)) fs.unlinkSync(publishedPath);
+          json(res, 200, { ok: true });
+          return;
+        }
+
+        res.setHeader("Allow", "GET, PUT, POST, DELETE");
+        json(res, 405, { error: "method not allowed" });
       });
     },
   };
 }
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), localQuestionBankPlugin()];
-const base = normalizeBasePath(process.env.VITE_BASE_PATH);
+export default defineConfig(({ mode }) => {
+  // ADMIN_UPLOAD_TOKEN is a server-side secret and deliberately has
+  // no VITE_ prefix, so it never reaches the bundle. loadEnv with an
+  // empty prefix is how the dev middleware gets at it.
+  const env = loadEnv(mode, path.resolve(import.meta.dirname), "");
+  const base = normalizeBasePath(env.VITE_BASE_PATH || process.env.VITE_BASE_PATH);
 
-export default defineConfig({
+  return {
   base,
-  plugins,
+  plugins: [
+    react(),
+    tailwindcss(),
+    jsxLocPlugin(),
+    localQuestionBankPlugin(env.ADMIN_UPLOAD_TOKEN || ""),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
@@ -67,4 +146,5 @@ export default defineConfig({
       deny: ["**/.*"],
     },
   },
+  };
 });

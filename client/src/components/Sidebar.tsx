@@ -1,12 +1,18 @@
 /* ============================================================
-   Sidebar — InfinityCloser Navigation
-   Design: Midnight Gradient — collapsible icon sidebar
+   Sidebar — INFINIX navigation
+
+   The active indicator is one shared pill that travels between
+   items rather than a background that cross-fades in place: the
+   destination is visible for the whole move, which is what makes
+   the selection feel like an object instead of a repaint.
    ============================================================ */
 
 import { useState } from "react";
+import { LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import { useApp, Screen } from "@/contexts/AppContext";
 import { useTheme } from "@/contexts/ThemeContext";
-import brandLogo from "@/assets/logo_black_nobg.png";
+import { fadeOnly, springMove } from "@/lib/motion";
+import Wordmark from "@/components/Wordmark";
 import {
   Home, BookOpen, User, Settings, LogOut,
   ChevronRight, ChevronLeft, Sun, Moon, Shield
@@ -19,10 +25,12 @@ interface NavItem {
   managerOnly?: boolean;
 }
 
+/* Labels name what is behind them rather than reaching for a safe
+   umbrella term — "בית" is where you are, not a category. */
 const NAV_ITEMS: NavItem[] = [
   { id: "hub", label: "בית", icon: Home },
   { id: "wizard", label: "אימון חדש", icon: BookOpen },
-  { id: "profile", label: "פרופיל", icon: User },
+  { id: "profile", label: "הביצועים שלי", icon: User },
   { id: "settings", label: "הגדרות", icon: Settings },
   { id: "manager", label: "ניהול", icon: Shield, managerOnly: true },
 ];
@@ -30,92 +38,100 @@ const NAV_ITEMS: NavItem[] = [
 export default function Sidebar() {
   const { currentScreen, setScreen, user, logout } = useApp();
   const { theme, toggleTheme } = useTheme();
-  // theme toggle is always available since we pass switchable=true
   const [expanded, setExpanded] = useState(false);
+  const reduceMotion = useReducedMotion();
 
   const visibleItems = NAV_ITEMS.filter(item =>
     !item.managerOnly || user?.role === "manager"
   );
 
+  const pillTransition = reduceMotion ? fadeOnly : springMove;
+
   return (
     <aside
       className={`app-sidebar ${expanded ? "expanded" : ""}`}
       style={{ direction: "rtl" }}
+      aria-label="ניווט ראשי"
     >
-      {/* Logo */}
-      <div className={`flex items-center gap-3 mb-6 ${expanded ? "w-full px-1" : "justify-center"}`}>
-        <img src={brandLogo} alt="INFINIX" className="brand-logo h-8 w-auto flex-shrink-0" />
+      {/* Masthead of the rail. Collapsed it is the mark alone; opened
+          it gains the descriptor underneath, on the same baseline
+          grid as the nav below it. */}
+      <div className={`mb-6 ${expanded ? "w-full px-3" : "px-1"}`}>
+        <Wordmark size={expanded ? "md" : "sm"} />
         {expanded && (
-          <div className="overflow-hidden">
-            <div className="font-black text-sm leading-tight" style={{ color: "var(--foreground)", fontFamily: "Heebo, sans-serif" }}>
-              INFINIX
-            </div>
-            <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>Simulator</div>
-          </div>
+          <div className="eyebrow mt-1">Simulator</div>
         )}
       </div>
 
       {/* Nav items */}
-      <nav className="flex flex-col gap-1 flex-1 w-full">
-        {visibleItems.map(item => {
-          const isActive = currentScreen === item.id;
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.id}
-              onClick={() => setScreen(item.id)}
-              className={`flex items-center gap-3 rounded-xl transition-all ${expanded ? "w-full px-3 py-2.5" : "w-10 h-10 justify-center"}`}
-              style={{
-                background: isActive ? "var(--primary)" : "transparent",
-                color: isActive ? "var(--primary-foreground)" : "var(--sidebar-foreground)",
-                boxShadow: isActive ? "0 0 12px rgba(255, 165, 0, 0.3)" : "none",
-              }}
-              title={!expanded ? item.label : undefined}
-            >
-              <Icon size={18} />
-              {expanded && (
-                <span className="text-sm font-semibold">{item.label}</span>
-              )}
-            </button>
-          );
-        })}
-      </nav>
+      <LayoutGroup id="sidebar-nav">
+        <nav className="flex flex-col gap-1 flex-1 w-full">
+          {visibleItems.map(item => {
+            const isActive = currentScreen === item.id;
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setScreen(item.id)}
+                className={`nav-item ${isActive ? "nav-item-active" : ""}`}
+                aria-current={isActive ? "page" : undefined}
+                title={!expanded ? item.label : undefined}
+              >
+                {isActive && (
+                  <motion.span
+                    layoutId="sidebar-active-pill"
+                    className="nav-pill"
+                    transition={pillTransition}
+                  />
+                )}
+                <Icon size={19} />
+                {expanded && (
+                  <span className="text-sm font-bold whitespace-nowrap">{item.label}</span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+      </LayoutGroup>
 
       {/* Bottom actions */}
       <div className="flex flex-col gap-1 w-full mt-auto">
         {/* Theme toggle */}
         <button
           onClick={toggleTheme}
-          className={`flex items-center gap-3 rounded-xl transition-all ${expanded ? "w-full px-3 py-2.5" : "w-10 h-10 justify-center"}`}
+          className="nav-item"
           style={{ color: "var(--muted-foreground)" }}
           title={!expanded ? (theme === "dark" ? "מצב בהיר" : "מצב כהה") : undefined}
+          aria-label={theme === "dark" ? "מעבר למצב בהיר" : "מעבר למצב כהה"}
         >
-          {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-          {expanded && <span className="text-sm font-semibold">{theme === "dark" ? "מצב בהיר" : "מצב כהה"}</span>}
+          {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
+          {expanded && <span className="text-sm font-bold whitespace-nowrap">{theme === "dark" ? "מצב בהיר" : "מצב כהה"}</span>}
         </button>
 
         {/* Logout */}
         <button
           onClick={logout}
-          className={`flex items-center gap-3 rounded-xl transition-all ${expanded ? "w-full px-3 py-2.5" : "w-10 h-10 justify-center"}`}
+          className="nav-item"
           style={{ color: "var(--muted-foreground)" }}
           title={!expanded ? "התנתק" : undefined}
         >
-          <LogOut size={18} />
-          {expanded && <span className="text-sm font-semibold">התנתק</span>}
+          <LogOut size={19} />
+          {expanded && <span className="text-sm font-bold whitespace-nowrap">התנתק</span>}
         </button>
 
         {/* Expand/collapse toggle */}
         <button
           onClick={() => setExpanded(v => !v)}
-          className={`flex items-center gap-3 rounded-xl transition-all mt-2 ${expanded ? "w-full px-3 py-2.5" : "w-10 h-10 justify-center"}`}
+          className="nav-item mt-2"
           style={{
             background: "var(--sidebar-accent)",
             color: "var(--sidebar-accent-foreground)",
           }}
+          aria-expanded={expanded}
+          aria-label={expanded ? "כווץ תפריט" : "הרחב תפריט"}
         >
-          {expanded ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-          {expanded && <span className="text-xs font-semibold">כווץ</span>}
+          {expanded ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}
+          {expanded && <span className="text-xs font-bold whitespace-nowrap">כווץ</span>}
         </button>
       </div>
     </aside>

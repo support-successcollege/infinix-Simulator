@@ -1,12 +1,25 @@
 /* ============================================================
-   QuizScreen — Quiz Engine
-   Design: Midnight Gradient — full-screen quiz with timer
-   Features: countdown timer, progress bar, answer feedback
+   QuizScreen — quiz engine
+
+   The bar and the footer are translucent material floating over
+   the question, not opaque strips carved out of the viewport:
+   content passes underneath and blurs, which is what tells you the
+   list continues past the chrome.
+
+   Answers highlight on press (CSS `:active`) but only commit on
+   release — an answer is not undoable, so a mis-touch has to be
+   escapable by dragging away.
    ============================================================ */
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useApp } from "@/contexts/AppContext";
-import { ChevronLeft, Clock, AlertTriangle, CheckCircle2, XCircle, Zap, FlaskConical } from "lucide-react";
+import { fadeOnly, springSettle, springSheet } from "@/lib/motion";
+import { ChevronLeft, Clock, AlertTriangle, CheckCircle2, XCircle, FlaskConical } from "lucide-react";
+
+/** Fallback padding used until the chrome has been measured. */
+const CHROME_TOP_FALLBACK = 92;
+const CHROME_BOTTOM_FALLBACK = 92;
 
 export default function QuizScreen() {
   const {
@@ -25,6 +38,25 @@ export default function QuizScreen() {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(Date.now());
+  const reduceMotion = useReducedMotion();
+
+  // The scroll area runs under the floating chrome, so it needs to
+  // reserve exactly as much room as the chrome actually occupies.
+  // Measured rather than hard-coded: the bar grows when the browser's
+  // text-size setting is raised, and a fixed inset would clip the
+  // first badge at large type.
+  const topChromeRef = useRef<HTMLDivElement | null>(null);
+  const [topInset, setTopInset] = useState(CHROME_TOP_FALLBACK);
+
+  useEffect(() => {
+    const el = topChromeRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      setTopInset(Math.ceil(entry.contentRect.height));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const totalQuestions = currentSession?.questions.length ?? 0;
   const progress = totalQuestions > 0 ? ((currentQuestionIndex) / totalQuestions) * 100 : 0;
@@ -85,113 +117,33 @@ export default function QuizScreen() {
   const timerColor = timePct > 50 ? "var(--foreground)" : timePct > 25 ? "var(--warning)" : "var(--destructive)";
 
   return (
-    <div className="h-full flex flex-col overflow-hidden" style={{ direction: "rtl", background: "var(--background)" }}>
-      {/* Top bar */}
+    <div className="h-full relative overflow-hidden" style={{ direction: "rtl", background: "var(--background)" }}>
+      {/* Question area — scrolls beneath the chrome at both ends. */}
       <div
-        className="flex-shrink-0 flex items-center justify-between px-4 py-3"
-        style={{ borderBottom: "1px solid var(--tf-border)", background: "var(--tf-surface)" }}
+        className="absolute inset-0 overflow-y-auto px-4 sm:px-6"
+        style={{
+          paddingTop: topInset,
+          paddingBottom: isShowingFeedback ? CHROME_BOTTOM_FALLBACK : 24,
+        }}
       >
-        {/* Exit */}
-        <button
-          onClick={() => setScreen("hub")}
-          className="flex items-center gap-1 text-sm font-semibold"
-          style={{ color: "var(--muted-foreground)" }}
-        >
-          <ChevronLeft size={16} />
-          יציאה
-        </button>
-
-        {/* Question counter */}
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-bold" style={{ color: "var(--foreground)", fontFamily: "Inter, sans-serif" }}>
-            {currentQuestionIndex + 1}
-          </span>
-          <span className="text-sm" style={{ color: "var(--muted-foreground)" }}>/ {totalQuestions}</span>
-        </div>
-
-        {/* Timer — polite so it isn't announced every single second. */}
-        {timeLimit > 0 && (
-          <div
-            className={`flex items-center gap-1.5 ${timerClass}`}
-            style={{ color: timerColor }}
-            role="timer"
-            aria-live="off"
-            aria-label={`נותרו ${timeLeft} שניות`}
-          >
-            <Clock size={15} aria-hidden="true" />
-            <span className="font-black text-base" style={{ fontFamily: "Inter, sans-serif", minWidth: "2ch" }}>
-              {timeLeft}
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Progress bar */}
-      <div className="flex-shrink-0 px-4 pt-3 pb-1">
-        <div className="flex items-center gap-3">
-          <div
-            className="flex-1 progress-bar-track"
-            role="progressbar"
-            aria-valuenow={currentQuestionIndex}
-            aria-valuemin={0}
-            aria-valuemax={totalQuestions}
-            aria-label={`שאלה ${currentQuestionIndex + 1} מתוך ${totalQuestions}`}
-          >
-            <div
-              className="progress-bar-fill"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          {/* Timer ring (if time-limited) */}
-          {timeLimit > 0 && (
-            <div className="relative w-6 h-6 flex-shrink-0">
-              <svg viewBox="0 0 24 24" className="w-full h-full -rotate-90">
-                <circle cx="12" cy="12" r="9" fill="none" stroke="var(--muted)" strokeWidth="2.5" />
-                <circle
-                  cx="12" cy="12" r="9" fill="none"
-                  stroke={timerColor}
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeDasharray="56.5"
-                  strokeDashoffset={56.5 * (1 - timePct / 100)}
-                  style={{ transition: "stroke-dashoffset 1s linear, stroke 0.3s ease" }}
-                />
-              </svg>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Question area */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
-        {/* Arena badge */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span
-            className="badge-pill"
-            style={{ background: "rgba(255, 165, 0, 0.15)", color: "var(--primary)", border: "1px solid rgba(255, 165, 0, 0.25)" }}
-          >
-            <Zap size={10} aria-hidden="true" />
+        <div className="screen-form flex flex-col gap-4">
+        {/* Tags. Outlined in their own colour — the fill is reserved
+            for an answered state, so an unanswered question carries
+            no filled colour at all. */}
+        <div className="flex items-center gap-2 flex-wrap pt-1">
+          <span className="badge-pill" style={{ color: "var(--muted-foreground)" }}>
             {currentQuestion.arena}
           </span>
           {currentSession.isDemo && (
-            <span
-              className="badge-pill"
-              style={{
-                background: "rgba(183, 146, 79, 0.18)",
-                color: "var(--accent)",
-                border: "1px solid rgba(183, 146, 79, 0.35)",
-              }}
-            >
+            <span className="badge-pill" style={{ color: "var(--accent)" }}>
               <FlaskConical size={10} aria-hidden="true" />
-              שאלת הדגמה
+              הדגמה
             </span>
           )}
           {currentQuestion.difficulty && (
             <span
               className="badge-pill"
               style={{
-                background: currentQuestion.difficulty === "easy" ? "rgba(34, 197, 94, 0.15)" :
-                  currentQuestion.difficulty === "medium" ? "rgba(255, 165, 0, 0.15)" : "rgba(220, 38, 38, 0.15)",
                 color: currentQuestion.difficulty === "easy" ? "var(--success)" :
                   currentQuestion.difficulty === "medium" ? "var(--warning)" : "var(--destructive)",
               }}
@@ -201,15 +153,10 @@ export default function QuizScreen() {
           )}
         </div>
 
-        {/* Question text */}
-        <div
-          className="rounded-2xl p-5"
-          style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border-strong)" }}
-        >
-          <p className="text-lg font-bold leading-relaxed" style={{ color: "var(--foreground)", fontFamily: "Heebo, sans-serif" }}>
-            {currentQuestion.text}
-          </p>
-        </div>
+        {/* The question is set as a headline, not boxed in a card. */}
+        <h2 className="t-title" style={{ color: "var(--foreground)" }}>
+          {currentQuestion.text}
+        </h2>
 
         {/* Answer options */}
         <div className="flex flex-col gap-2.5">
@@ -226,6 +173,9 @@ export default function QuizScreen() {
               optClass += " selected-correct"; // temporary highlight
             }
 
+            const isRevealedCorrect = isShowingFeedback && index === currentQuestion.correctIndex;
+            const isRevealedWrong = isShowingFeedback && lastAnswer?.selectedIndex === index && !lastAnswer.isCorrect;
+
             return (
               <button
                 key={index}
@@ -235,25 +185,20 @@ export default function QuizScreen() {
               >
                 <div className="flex items-center gap-3">
                   <span
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black flex-shrink-0"
+                    className="w-6 h-6 flex items-center justify-center text-xs flex-shrink-0 t-numeric"
                     style={{
-                      background: isShowingFeedback && index === currentQuestion.correctIndex
-                        ? "rgba(34, 197, 94, 0.25)"
-                        : isShowingFeedback && lastAnswer?.selectedIndex === index && !lastAnswer.isCorrect
-                          ? "rgba(220, 38, 38, 0.25)"
-                          : "var(--accent)",
-                      color: isShowingFeedback && index === currentQuestion.correctIndex
+                      border: "1px solid currentColor",
+                      color: isRevealedCorrect
                         ? "var(--success)"
-                        : isShowingFeedback && lastAnswer?.selectedIndex === index && !lastAnswer.isCorrect
+                        : isRevealedWrong
                           ? "var(--destructive)"
-                          : "var(--accent-foreground)",
-                      fontFamily: "Inter, sans-serif",
+                          : "var(--muted-foreground)",
                     }}
                   >
-                    {isShowingFeedback && index === currentQuestion.correctIndex ? (
-                      <CheckCircle2 size={14} />
-                    ) : isShowingFeedback && lastAnswer?.selectedIndex === index && !lastAnswer.isCorrect ? (
-                      <XCircle size={14} />
+                    {isRevealedCorrect ? (
+                      <CheckCircle2 size={13} />
+                    ) : isRevealedWrong ? (
+                      <XCircle size={13} />
                     ) : (
                       String.fromCharCode(65 + index) // A, B, C, D
                     )}
@@ -270,12 +215,12 @@ export default function QuizScreen() {
           {/* Timeout message */}
           {isShowingFeedback && lastAnswer?.selectedIndex === -1 && (
             <div
-              className="feedback-box rounded-xl p-4 flex items-center gap-3"
-              style={{ background: "rgba(255, 165, 0, 0.15)", border: "1px solid rgba(255, 165, 0, 0.3)" }}
+              className="feedback-box p-4 flex items-center gap-3"
+              style={{ background: "var(--tint-primary-weak)", borderInlineStart: "3px solid var(--warning)" }}
             >
-              <AlertTriangle size={20} style={{ color: "var(--warning)", flexShrink: 0 }} aria-hidden="true" />
+              <AlertTriangle size={18} style={{ color: "var(--warning)", flexShrink: 0 }} aria-hidden="true" />
               <p className="text-sm font-semibold" style={{ color: "var(--warning)" }}>
-                הזמן נגמר! לא נבחרה תשובה.
+                הזמן נגמר. לא נבחרה תשובה.
               </p>
             </div>
           )}
@@ -289,30 +234,124 @@ export default function QuizScreen() {
             />
           )}
         </div>
+        </div>
       </div>
 
-      {/* Footer — next button */}
-      {isShowingFeedback && (
-        <div
-          className="flex-shrink-0 p-4"
-          style={{ borderTop: "1px solid var(--tf-border)", background: "var(--background)" }}
-        >
+      {/* ── Floating top chrome ── */}
+      <div ref={topChromeRef} className="absolute top-0 inset-x-0 z-20 tf-chrome tf-chrome-top">
+        <div className="screen-form flex items-center justify-between px-4 sm:px-6 py-3">
+          {/* Exit */}
           <button
-            onClick={nextQuestion}
-            className="w-full py-3.5 rounded-xl font-black text-base transition-all flex items-center justify-center gap-2"
-            style={{
-              background: "var(--primary)",
-              color: "var(--primary-foreground)",
-              boxShadow: "0 0 20px rgba(255, 165, 0, 0.35)",
-            }}
+            onClick={() => setScreen("hub")}
+            className="flex items-center gap-1 text-sm font-bold py-1"
+            style={{ color: "var(--muted-foreground)" }}
           >
-            {currentQuestionIndex + 1 >= (currentSession?.questions.length ?? 0)
-              ? "סיים מבחן"
-              : "שאלה הבאה"}
-            <ChevronLeft size={18} />
+            <ChevronLeft size={16} />
+            יציאה
           </button>
+
+          {/* Question counter */}
+          <div className="flex items-center gap-1.5 t-numeric">
+            <span className="text-sm font-bold" style={{ color: "var(--foreground)" }}>
+              {currentQuestionIndex + 1}
+            </span>
+            <span className="text-sm" style={{ color: "var(--muted-foreground)" }}>/ {totalQuestions}</span>
+          </div>
+
+          {/* Timer — polite so it isn't announced every single second. */}
+          {timeLimit > 0 && (
+            <div
+              className={`flex items-center gap-1.5 ${timerClass}`}
+              style={{ color: timerColor }}
+              role="timer"
+              aria-live="off"
+              aria-label={`נותרו ${timeLeft} שניות`}
+            >
+              <Clock size={15} aria-hidden="true" />
+              {/* Tabular figures: a countdown that reflows every second
+                  reads as jitter rather than as time passing. */}
+              <span className="t-numeric font-black text-base" style={{ minWidth: "2ch" }}>
+                {timeLeft}
+              </span>
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Progress */}
+        <div className="screen-form px-4 sm:px-6 pb-3">
+          <div className="flex items-center gap-3">
+            <div
+              className="flex-1 progress-bar-track"
+              role="progressbar"
+              aria-valuenow={currentQuestionIndex}
+              aria-valuemin={0}
+              aria-valuemax={totalQuestions}
+              aria-label={`שאלה ${currentQuestionIndex + 1} מתוך ${totalQuestions}`}
+            >
+              {/* Scaled rather than resized: width is a layout
+                  property and animating it costs a reflow every
+                  frame, while a transform stays on the compositor.
+                  Origin is the right edge because the layout is RTL. */}
+              <motion.div
+                className="progress-bar-fill"
+                initial={false}
+                animate={{ scaleX: progress / 100 }}
+                transition={reduceMotion ? fadeOnly : springSettle}
+                style={{
+                  width: "100%",
+                  transformOrigin: "right center",
+                  transition: "none",
+                  willChange: "transform",
+                }}
+              />
+            </div>
+            {/* Timer ring (if time-limited) */}
+            {timeLimit > 0 && (
+              <div className="relative w-6 h-6 flex-shrink-0">
+                <svg viewBox="0 0 24 24" className="w-full h-full -rotate-90">
+                  <circle cx="12" cy="12" r="9" fill="none" stroke="var(--muted)" strokeWidth="2.5" />
+                  <circle
+                    cx="12" cy="12" r="9" fill="none"
+                    stroke={timerColor}
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeDasharray="56.5"
+                    strokeDashoffset={56.5 * (1 - timePct / 100)}
+                    style={{ transition: "stroke-dashoffset 1s linear, stroke 0.3s ease" }}
+                  />
+                </svg>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Floating footer ──
+          Rises from the bottom edge and leaves the same way, so the
+          control is clearly anchored to the foot of the screen. */}
+      <AnimatePresence>
+        {isShowingFeedback && (
+          <motion.div
+            key="quiz-footer"
+            className="absolute bottom-0 inset-x-0 z-20 p-4 sm:px-6 tf-chrome tf-chrome-bottom"
+            initial={reduceMotion ? { opacity: 0 } : { y: "100%", opacity: 0 }}
+            animate={reduceMotion ? { opacity: 1 } : { y: 0, opacity: 1 }}
+            exit={reduceMotion ? { opacity: 0 } : { y: "100%", opacity: 0 }}
+            transition={reduceMotion ? fadeOnly : springSheet}
+          >
+            <button
+              onClick={nextQuestion}
+              className="btn-primary screen-form w-full text-base"
+              autoFocus
+            >
+              {currentQuestionIndex + 1 >= (currentSession?.questions.length ?? 0)
+                ? "סיים מבחן"
+                : "שאלה הבאה"}
+              <ChevronLeft size={18} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -324,47 +363,41 @@ function FeedbackBox({ isCorrect, selectedAnswer, correctAnswer }: {
   selectedAnswer: string;
   correctAnswer: string;
 }) {
+  const verdictColor = isCorrect ? "var(--success)" : "var(--destructive)";
+
   return (
     <div
-      className="feedback-box rounded-2xl overflow-hidden"
+      className="feedback-box p-4"
       style={{
-        border: `1px solid ${isCorrect ? "rgba(34, 197, 94, 0.4)" : "rgba(220, 38, 38, 0.4)"}`,
+        background: isCorrect ? "var(--tint-success-weak)" : "var(--tint-danger-weak)",
+        borderInlineStart: `3px solid ${verdictColor}`,
       }}
     >
-      {/* Header */}
-      <div
-        className="flex items-center gap-3 px-4 py-3"
-        style={{
-          background: isCorrect ? "rgba(34, 197, 94, 0.2)" : "rgba(220, 38, 38, 0.2)",
-        }}
-      >
-        {isCorrect ? (
-          <CheckCircle2 size={20} style={{ color: "var(--success)", flexShrink: 0 }} />
-        ) : (
-          <XCircle size={20} style={{ color: "var(--destructive)", flexShrink: 0 }} />
-        )}
-        <span className="font-black text-base" style={{ color: isCorrect ? "var(--success)" : "var(--destructive)" }}>
-          {isCorrect ? "תשובה נכונה! 🎉" : "תשובה שגויה"}
+      <div className="flex items-center gap-2 mb-3">
+        {isCorrect
+          ? <CheckCircle2 size={16} style={{ color: verdictColor, flexShrink: 0 }} aria-hidden="true" />
+          : <XCircle size={16} style={{ color: verdictColor, flexShrink: 0 }} aria-hidden="true" />}
+        <span className="eyebrow" style={{ color: verdictColor }}>
+          {isCorrect ? "תשובה נכונה" : "תשובה שגויה"}
         </span>
       </div>
 
-      {/* Body */}
-      <div className="px-4 py-4 flex flex-col gap-3" style={{ background: "var(--tf-surface)" }}>
-        <div className="rounded-lg p-3" style={{ background: "var(--background)", border: "1px solid var(--tf-border)" }}>
-          <p className="text-xs font-semibold mb-1" style={{ color: "var(--muted-foreground)" }}>בחרת:</p>
-          <p className="text-sm font-bold" style={{ color: isCorrect ? "var(--success)" : "var(--destructive)" }}>
-            {selectedAnswer}
-          </p>
-        </div>
-        <div className="rounded-lg p-3" style={{ background: "rgba(34, 197, 94, 0.1)", border: "1px solid rgba(34, 197, 94, 0.2)" }}>
-          <p className="text-xs font-semibold mb-1" style={{ color: "var(--success)" }}>תשובה נכונה:</p>
-          <p className="text-sm font-bold" style={{ color: "var(--foreground)" }}>{correctAnswer}</p>
-        </div>
+      {/* The two answers as a ruled comparison — no nested boxes. */}
+      <div className="data-list" style={{ borderTopColor: "color-mix(in srgb, currentColor 15%, transparent)" }}>
         {!isCorrect && (
-          <div className="text-xs font-semibold" style={{ color: "var(--destructive)" }}>
-            נסה שוב בשאלה הבאה.
+          <div className="data-row" style={{ borderBottomColor: "color-mix(in srgb, currentColor 15%, transparent)" }}>
+            <span className="data-row-label flex-shrink-0">בחרת</span>
+            <span className="text-sm font-semibold text-left" style={{ color: "var(--destructive)" }}>
+              {selectedAnswer}
+            </span>
           </div>
         )}
+        <div className="data-row" style={{ borderBottomColor: "transparent" }}>
+          <span className="data-row-label flex-shrink-0">התשובה הנכונה</span>
+          <span className="text-sm font-semibold text-left" style={{ color: "var(--foreground)" }}>
+            {correctAnswer}
+          </span>
+        </div>
       </div>
     </div>
   );

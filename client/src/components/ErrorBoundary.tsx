@@ -34,23 +34,15 @@ class ErrorBoundary extends Component<Props, State> {
               className="text-destructive mb-6 flex-shrink-0"
             />
 
-            <h2 className="text-xl font-black mb-2 text-foreground" style={{ fontFamily: "Heebo, sans-serif" }}>
+            <h2 className="t-title mb-2 text-foreground">
               אירעה שגיאה בלתי צפויה
             </h2>
             <p className="text-sm text-muted-foreground mb-6">
               אנא טען מחדש את הדף. אם הבעיה חוזרת, פנה לתמיכה.
             </p>
 
-            <button
-              onClick={() => window.location.reload()}
-              className={cn(
-                "flex items-center gap-2 px-6 py-3 rounded-xl font-bold",
-                "bg-primary text-primary-foreground",
-                "hover:opacity-90 cursor-pointer"
-              )}
-              style={{ boxShadow: "0 0 16px rgba(255, 165, 0, 0.3)" }}
-            >
-              <RotateCcw size={16} />
+            <button onClick={() => window.location.reload()} className={cn("btn-primary")}>
+              <RotateCcw size={15} />
               טען מחדש
             </button>
           </div>

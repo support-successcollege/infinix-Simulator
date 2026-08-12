@@ -28,7 +28,7 @@ function AppRoutes() {
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider defaultTheme="dark" switchable>
+      <ThemeProvider defaultTheme="light" switchable>
         <AppProvider>
           <Router hook={useHashLocation}>
             <TooltipProvider>

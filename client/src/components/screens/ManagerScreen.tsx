@@ -34,7 +34,7 @@ export default function ManagerScreen() {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-4 p-6" style={{ direction: "rtl" }}>
         <Shield size={48} style={{ color: "var(--muted-foreground)", opacity: 0.4 }} />
-        <h2 className="text-xl font-black" style={{ color: "var(--foreground)", fontFamily: "Heebo, sans-serif" }}>
+        <h2 className="t-title" style={{ color: "var(--foreground)" }}>
           גישה מוגבלת
         </h2>
         <p className="text-sm text-center" style={{ color: "var(--muted-foreground)" }}>
@@ -128,40 +128,42 @@ export default function ManagerScreen() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ direction: "rtl" }}>
-      <div className="flex-shrink-0 px-4 pt-5 pb-4" style={{ borderBottom: "1px solid var(--tf-border)", background: "var(--tf-surface)" }}>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(183, 146, 79, 0.2)", border: "1px solid rgba(183, 146, 79, 0.35)" }}>
-            <Shield size={20} style={{ color: "var(--warning)" }} />
-          </div>
-          <div>
-            <h1 className="text-xl font-black" style={{ color: "var(--foreground)", fontFamily: "Heebo, sans-serif" }}>מרכז פיקוד</h1>
-            <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>ניהול צוות, דוחות ותוכן</p>
-          </div>
-        </div>
+      <div className="flex-shrink-0 masthead px-4 sm:px-6 pt-6 pb-0">
+        <div className="screen-body-wide">
+          <p className="eyebrow mb-2">ניהול צוות, דוחות ותוכן</p>
+          <h1 className="t-title mb-5">מרכז פיקוד</h1>
 
-        <div className="flex gap-1 rounded-xl p-1" style={{ background: "var(--muted)" }}>
-          {([
-            { id: "team" as Tab, label: "צוות", icon: Users },
-            { id: "reports" as Tab, label: "דוחות", icon: BarChart2 },
-            { id: "content" as Tab, label: "תוכן", icon: BookOpen },
-          ]).map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all"
-              style={{
-                background: activeTab === id ? "var(--card)" : "transparent",
-                color: activeTab === id ? "var(--foreground)" : "var(--muted-foreground)",
-              }}
-            >
-              <Icon size={13} />
-              {label}
-            </button>
-          ))}
+          {/* Tabs sit on the masthead rule: the live one is marked by
+              an ink underline rather than a raised pill. */}
+          <div className="flex gap-6" style={{ marginBottom: "-2px" }}>
+            {([
+              { id: "team" as Tab, label: "צוות", icon: Users },
+              { id: "reports" as Tab, label: "דוחות", icon: BarChart2 },
+              { id: "content" as Tab, label: "תוכן", icon: BookOpen },
+            ]).map(({ id, label, icon: Icon }) => {
+              const isActive = activeTab === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setActiveTab(id)}
+                  aria-current={isActive ? "page" : undefined}
+                  className="flex items-center gap-1.5 pb-2.5 text-sm font-semibold"
+                  style={{
+                    color: isActive ? "var(--foreground)" : "var(--muted-foreground)",
+                    borderBottom: `2px solid ${isActive ? "var(--foreground)" : "transparent"}`,
+                    transition: "color var(--dur-fast) var(--ease-settle)",
+                  }}
+                >
+                  <Icon size={14} aria-hidden="true" />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 sm:px-6 screen-body-wide">
         {activeTab === "team" && (
           <div className="flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-3">
@@ -173,7 +175,7 @@ export default function ManagerScreen() {
               ].map(({ label, value, icon: Icon, color }) => (
                 <div key={label} className="stat-card">
                   <div className="flex items-center gap-2 mb-2"><Icon size={14} style={{ color }} /><span className="text-xs" style={{ color: "var(--muted-foreground)" }}>{label}</span></div>
-                  <div className="text-2xl font-black" style={{ color: "var(--foreground)", fontFamily: "Inter, sans-serif" }}>{value}</div>
+                  <div className="t-numeric text-2xl font-black" style={{ color: "var(--foreground)" }}>{value}</div>
                 </div>
               ))}
             </div>
@@ -202,7 +204,7 @@ export default function ManagerScreen() {
             {/* Be explicit about what this account system is and isn't. */}
             <div
               className="rounded-xl p-3 flex items-start gap-2"
-              style={{ background: "rgba(255, 165, 0, 0.1)", border: "1px solid rgba(255, 165, 0, 0.3)" }}
+              style={{ background: "var(--tint-primary-weak)", border: "1px solid var(--line-primary)" }}
             >
               <ShieldAlert size={16} style={{ color: "var(--primary)", flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
               <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>
@@ -219,7 +221,7 @@ export default function ManagerScreen() {
             <div className="flex flex-col gap-2">
               {filteredMembers.map(m => (
                 <div key={m.id} className="rounded-xl p-3 flex items-center gap-3" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm" style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}>{m.name.charAt(0)}</div>
+                  <div className="w-9 h-9 flex items-center justify-center text-sm flex-shrink-0" style={{ background: "var(--foreground)", color: "var(--background)", fontFamily: "var(--font-display)", fontWeight: 700 }}>{m.name.charAt(0)}</div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-bold" style={{ color: "var(--foreground)" }}>{m.name}</div>
                     <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>{m.email} • {m.role === "manager" ? "מנהל" : "סטודנט"}</div>
@@ -249,7 +251,7 @@ export default function ManagerScreen() {
                       }
                     }}
                     className="p-2 rounded-lg"
-                    style={{ background: "rgba(220, 38, 38, 0.12)", color: "var(--destructive)" }}
+                    style={{ background: "var(--tint-danger-weak)", color: "var(--destructive)" }}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -264,9 +266,9 @@ export default function ManagerScreen() {
             <div className="rounded-xl p-4" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
               <h3 className="font-bold text-sm mb-3" style={{ color: "var(--foreground)" }}>סקירת סשנים</h3>
               <div className="grid grid-cols-3 gap-3">
-                <div className="stat-card"><span className="text-xs" style={{ color: "var(--muted-foreground)" }}>סה\"כ סשנים</span><span className="text-2xl font-black" style={{ color: "var(--foreground)" }}>{sessions.length}</span></div>
-                <div className="stat-card"><span className="text-xs" style={{ color: "var(--muted-foreground)" }}>ציון ממוצע</span><span className="text-2xl font-black" style={{ color: "var(--foreground)" }}>{sessions.length ? Math.round(sessions.reduce((s, x) => s + x.score, 0) / sessions.length) : 0}%</span></div>
-                <div className="stat-card"><span className="text-xs" style={{ color: "var(--muted-foreground)" }}>זירות פעילות</span><span className="text-2xl font-black" style={{ color: "var(--foreground)" }}>{new Set(sessions.map(s => s.arenaName)).size}</span></div>
+                <div className="stat-card"><span className="text-xs" style={{ color: "var(--muted-foreground)" }}>סה\"כ סשנים</span><span className="t-numeric text-2xl font-black" style={{ color: "var(--foreground)" }}>{sessions.length}</span></div>
+                <div className="stat-card"><span className="text-xs" style={{ color: "var(--muted-foreground)" }}>ציון ממוצע</span><span className="t-numeric text-2xl font-black" style={{ color: "var(--foreground)" }}>{sessions.length ? Math.round(sessions.reduce((s, x) => s + x.score, 0) / sessions.length) : 0}%</span></div>
+                <div className="stat-card"><span className="text-xs" style={{ color: "var(--muted-foreground)" }}>זירות פעילות</span><span className="t-numeric text-2xl font-black" style={{ color: "var(--foreground)" }}>{new Set(sessions.map(s => s.arenaName)).size}</span></div>
               </div>
             </div>
             <button onClick={exportReportCsv} className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}>
@@ -449,9 +451,11 @@ function ContentTab({
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-8">
       <input ref={importInputRef} type="file" accept=".json,application/json" className="hidden" onChange={onImportJson} />
       <input ref={categoryImportInputRef} type="file" accept=".json,application/json" className="hidden" onChange={handleCategoryImport} />
+
+      <PublishPanel />
 
       <div className="rounded-xl p-4" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -476,7 +480,7 @@ function ContentTab({
                 שאלות ({selectedQuestions.length})
               </div>
               <div className="flex gap-1 mb-2">
-                <button onClick={handleDeleteCategory} className="px-2 py-1 rounded-lg text-[11px] font-bold" style={{ background: "rgba(220, 38, 38, 0.12)", color: "var(--destructive)" }}>
+                <button onClick={handleDeleteCategory} className="px-2 py-1 rounded-lg text-[11px] font-bold" style={{ background: "var(--tint-danger-weak)", color: "var(--destructive)" }}>
                   מחק קטגוריה
                 </button>
                 <button onClick={handleResetAll} className="px-2 py-1 rounded-lg text-[11px] font-bold" style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}>
@@ -551,7 +555,7 @@ function ContentTab({
                     <button onClick={addQuestion} className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1" style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}>
                       <PlusCircle size={13} /> הוסף שאלה
                     </button>
-                    <button onClick={deleteQuestion} className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1" style={{ background: "rgba(220, 38, 38, 0.12)", color: "var(--destructive)" }}>
+                    <button onClick={deleteQuestion} className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1" style={{ background: "var(--tint-danger-weak)", color: "var(--destructive)" }}>
                       <Trash2 size={13} /> מחק שאלה
                     </button>
                   </div>
@@ -573,13 +577,173 @@ function ContentTab({
         </button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-        <button onClick={() => categoryImportInputRef.current?.click()} className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{ background: "#b7924f", color: "#000" }}>
+        {/* The old inline #b7924f was the pre-rebrand gold; it survived
+            two palette changes because it was never a token. */}
+        <button onClick={() => categoryImportInputRef.current?.click()} className="py-3 font-bold text-sm flex items-center justify-center gap-2" style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}>
           <Upload size={15} /> ייבוא קטגוריה ושמירה קבועה
         </button>
-        <button onClick={handleResetAll} className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{ background: "rgba(220, 38, 38, 0.12)", color: "var(--destructive)", border: "1px solid rgba(220, 38, 38, 0.3)" }}>
+        <button onClick={handleResetAll} className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{ background: "var(--tint-danger-weak)", color: "var(--destructive)", border: "1px solid var(--line-danger)" }}>
           <Trash2 size={15} /> מחיקה ואיפוס תוכן
         </button>
       </div>
     </div>
+  );
+}
+
+// ── Publish panel ─────────────────────────────────────────────
+/**
+ * Publishing is what makes an upload reach the students. Everything
+ * else on this screen edits a copy that lives in this browser only,
+ * which is exactly the confusion this panel exists to remove: it
+ * states which bank is live, and gives the two verbs that change it.
+ *
+ * The token is checked on the server (api/question-bank.ts). Holding
+ * it here is a convenience so it isn't retyped on every publish.
+ */
+function PublishPanel() {
+  const {
+    bankSource,
+    sharedBankExists,
+    adminToken,
+    setAdminToken,
+    publishQuestionBank,
+    unpublishQuestionBank,
+    clearImportedQuestionBank,
+  } = useApp();
+
+  const publishInputRef = useRef<HTMLInputElement | null>(null);
+  const [tokenDraft, setTokenDraft] = useState(adminToken);
+  const [busy, setBusy] = useState<"publish" | "unpublish" | null>(null);
+
+  const SOURCE_LABEL: Record<typeof bankSource, string> = {
+    shared: "מאגר משותף — פעיל לכל התלמידים",
+    local: "מאגר מקומי — רק בדפדפן הזה",
+    bundled: "מאגר מובנה — נבנה יחד עם האתר",
+    none: "אין מאגר — תוכן הדגמה",
+  };
+
+  const onPublish: ChangeEventHandler<HTMLInputElement> = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy("publish");
+    try {
+      await publishQuestionBank(file);
+      toast.success("המאגר פורסם — כל התלמידים יראו אותו");
+    } catch (err) {
+      toast.error((err as Error)?.message || "פרסום נכשל");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onUnpublish = async () => {
+    setBusy("unpublish");
+    try {
+      await unpublishQuestionBank();
+      toast.success("הפרסום בוטל — חוזרים למאגר המובנה");
+    } catch (err) {
+      toast.error((err as Error)?.message || "ביטול הפרסום נכשל");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <section>
+      <div className="section-head">
+        <span className="section-head-index">01</span>
+        <h3 className="section-head-title">פרסום לכל התלמידים</h3>
+        <span
+          className="section-head-tail eyebrow"
+          style={{ color: bankSource === "shared" ? "var(--success)" : "var(--muted-foreground)" }}
+        >
+          {bankSource === "shared" ? "פעיל" : sharedBankExists ? "מוסתר" : "לא פורסם"}
+        </span>
+      </div>
+
+      <input
+        ref={publishInputRef}
+        type="file"
+        accept=".json,application/json"
+        className="hidden"
+        onChange={onPublish}
+      />
+
+      <div className="data-list mb-4">
+        <div className="data-row">
+          <span className="data-row-label">המאגר שמוצג כרגע</span>
+          <span className="data-row-value">{SOURCE_LABEL[bankSource]}</span>
+        </div>
+      </div>
+
+      {/* A local import silently shadows the published bank for the
+          person who set it — the one case where the manager and the
+          students are looking at different questions. */}
+      {bankSource === "local" && sharedBankExists && (
+        <div
+          role="status"
+          className="p-4 mb-4 flex items-start gap-3"
+          style={{ background: "var(--tint-primary-weak)", borderInlineStart: "3px solid var(--accent)" }}
+        >
+          <ShieldAlert size={16} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 3 }} aria-hidden="true" />
+          <div className="flex-1">
+            <p className="text-sm mb-3" style={{ color: "var(--foreground)" }}>
+              קיים מאגר מקומי בדפדפן הזה שמסתיר את המאגר המשותף. התלמידים רואים משהו אחר ממה שאתה רואה.
+            </p>
+            <button onClick={clearImportedQuestionBank} className="btn-chip">
+              הצג את המאגר המשותף
+            </button>
+          </div>
+        </div>
+      )}
+
+      <label className="block text-sm mb-4">
+        <span className="eyebrow">טוקן ניהול</span>
+        <div className="flex gap-2 mt-1">
+          <input
+            className="tf-input"
+            type="password"
+            autoComplete="off"
+            placeholder={adminToken ? "•••••••• (נשמר)" : "ADMIN_UPLOAD_TOKEN"}
+            value={tokenDraft}
+            onChange={e => setTokenDraft(e.target.value)}
+            style={{ direction: "ltr", textAlign: "left" }}
+          />
+          <button
+            onClick={() => {
+              setAdminToken(tokenDraft);
+              toast.success(tokenDraft.trim() ? "הטוקן נשמר בדפדפן הזה" : "הטוקן נמחק");
+            }}
+            className="btn-chip flex-shrink-0"
+          >
+            שמור
+          </button>
+        </div>
+        <p className="t-caption mt-1.5" style={{ color: "var(--muted-foreground)" }}>
+          מוגדר כמשתנה סביבה ADMIN_UPLOAD_TOKEN ב-Vercel. הבדיקה רצה בשרת.
+        </p>
+      </label>
+
+      <div className="flex gap-2 flex-wrap">
+        <button
+          onClick={() => publishInputRef.current?.click()}
+          disabled={!adminToken || busy !== null}
+          className="btn-primary text-sm"
+        >
+          <Upload size={15} />
+          {busy === "publish" ? "מפרסם..." : "פרסם קובץ JSON"}
+        </button>
+        {sharedBankExists && (
+          <button
+            onClick={onUnpublish}
+            disabled={!adminToken || busy !== null}
+            className="btn-secondary text-sm"
+          >
+            {busy === "unpublish" ? "מבטל..." : "בטל פרסום"}
+          </button>
+        )}
+      </div>
+    </section>
   );
 }

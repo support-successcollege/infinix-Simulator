@@ -10,13 +10,12 @@ export default function NotFound() {
     >
       <div className="text-center">
         <div
-          className="text-8xl font-black mb-4"
+          className="t-numeric text-8xl font-black mb-4"
           style={{
-            background: "linear-gradient(135deg, var(--primary), #b7924f)",
+            background: "linear-gradient(135deg, var(--primary), var(--tf-accent-line))",
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent",
             backgroundClip: "text",
-            fontFamily: "Inter, sans-serif",
           }}
         >
           404
@@ -27,15 +26,7 @@ export default function NotFound() {
         <p className="text-sm mb-8" style={{ color: "var(--muted-foreground)" }}>
           הדף שחיפשת אינו קיים או הוסר.
         </p>
-        <button
-          onClick={() => setLocation("/")}
-          className="px-6 py-3 rounded-xl font-bold text-base"
-          style={{
-            background: "var(--primary)",
-            color: "var(--primary-foreground)",
-            boxShadow: "0 0 20px rgba(255, 165, 0, 0.35)",
-          }}
-        >
+        <button onClick={() => setLocation("/")} className="btn-primary">
           חזרה לדף הבית
         </button>
       </div>

@@ -1,7 +1,18 @@
 import { useMemo, useState } from "react";
 import { useApp, type TrainingMode } from "@/contexts/AppContext";
-import { Save, RotateCcw, Shield, SlidersHorizontal, UserRound, KeyRound } from "lucide-react";
+import { Save, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const MODE_OPTIONS: { value: TrainingMode; label: string }[] = [
   { value: "full", label: "מבחן מלא" },
@@ -13,7 +24,8 @@ const COUNT_OPTIONS = [5, 10, 15, 20, 30];
 const TIME_OPTIONS = [0, 30, 60, 90, 120];
 
 export default function SettingsScreen() {
-  const { user, trainingConfig, setTrainingConfig, updateUserProfile, resetSessions, changePassword } = useApp();
+  const { user, sessions, trainingConfig, setTrainingConfig, updateUserProfile, resetSessions, changePassword } = useApp();
+  const sessionCount = sessions.length;
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [nextPassword, setNextPassword] = useState("");
@@ -73,13 +85,11 @@ export default function SettingsScreen() {
   };
 
   return (
-    <div className="h-full overflow-y-auto p-4" style={{ direction: "rtl" }}>
-      <div className="max-w-3xl mx-auto flex flex-col gap-4">
-        <div
-          className="rounded-2xl p-4"
-          style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}
-        >
-          <h2 className="text-xl font-black mb-1" style={{ color: "var(--foreground)", fontFamily: "Heebo, sans-serif" }}>
+    <div className="h-full overflow-y-auto p-4 sm:px-6" style={{ direction: "rtl" }}>
+      <div className="screen-form flex flex-col gap-8 py-2">
+        <div className="pb-4" style={{ borderBottom: "var(--rule-heavy)" }}>
+          <p className="eyebrow mb-2">תצורה</p>
+          <h2 className="t-title mb-1" style={{ color: "var(--foreground)" }}>
             הגדרות מערכת
           </h2>
           <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
@@ -87,10 +97,11 @@ export default function SettingsScreen() {
           </p>
         </div>
 
-        <section className="rounded-2xl p-4" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
-          <h3 className="font-bold text-sm mb-3" style={{ color: "var(--foreground)" }}>
-            <UserRound size={14} className="inline ml-1" /> פרופיל
-          </h3>
+        <section>
+          <div className="section-head">
+            <span className="section-head-index">01</span>
+            <h3 className="section-head-title">פרופיל</h3>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <label className="text-sm">
               <span style={{ color: "var(--muted-foreground)" }}>שם תצוגה</span>
@@ -110,10 +121,11 @@ export default function SettingsScreen() {
           </div>
         </section>
 
-        <section className="rounded-2xl p-4" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
-          <h3 className="font-bold text-sm mb-3" style={{ color: "var(--foreground)" }}>
-            <SlidersHorizontal size={14} className="inline ml-1" /> ברירות מחדל לאימון
-          </h3>
+        <section>
+          <div className="section-head">
+            <span className="section-head-index">02</span>
+            <h3 className="section-head-title">ברירות מחדל לאימון</h3>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <label className="text-sm">
               <span style={{ color: "var(--muted-foreground)" }}>מצב אימון</span>
@@ -136,10 +148,11 @@ export default function SettingsScreen() {
           </div>
         </section>
 
-        <section className="rounded-2xl p-4" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
-          <h3 className="font-bold text-sm mb-3" style={{ color: "var(--foreground)" }}>
-            <KeyRound size={14} className="inline ml-1" /> החלפת סיסמה
-          </h3>
+        <section>
+          <div className="section-head">
+            <span className="section-head-index">03</span>
+            <h3 className="section-head-title">החלפת סיסמה</h3>
+          </div>
           <form onSubmit={submitPasswordChange} className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <label className="text-sm">
               <span style={{ color: "var(--muted-foreground)" }}>סיסמה נוכחית</span>
@@ -178,17 +191,7 @@ export default function SettingsScreen() {
               <button
                 type="submit"
                 disabled={isChangingPassword || !currentPassword || !nextPassword}
-                className="px-4 py-2 rounded-xl text-sm font-bold"
-                style={{
-                  background:
-                    isChangingPassword || !currentPassword || !nextPassword
-                      ? "var(--muted)"
-                      : "var(--primary)",
-                  color:
-                    isChangingPassword || !currentPassword || !nextPassword
-                      ? "var(--muted-foreground)"
-                      : "var(--primary-foreground)",
-                }}
+                className="btn-primary text-sm"
               >
                 {isChangingPassword ? "שומר..." : "החלף סיסמה"}
               </button>
@@ -199,43 +202,67 @@ export default function SettingsScreen() {
           </form>
         </section>
 
-        <section className="rounded-2xl p-4" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
-          <h3 className="font-bold text-sm mb-3" style={{ color: "var(--foreground)" }}>
-            <Shield size={14} className="inline ml-1" /> תחזוקה מקומית
-          </h3>
+        <section>
+          <div className="section-head">
+            <span className="section-head-index">04</span>
+            <h3 className="section-head-title">תחזוקה מקומית</h3>
+          </div>
           <div className="flex flex-wrap gap-2">
-            <button
-              onClick={restoreDefaults}
-              className="px-4 py-2 rounded-xl text-sm font-semibold"
-              style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}
-            >
-              <RotateCcw size={14} className="inline ml-1" /> שחזור ברירת מחדל
+            <button onClick={restoreDefaults} className="btn-secondary text-sm">
+              <RotateCcw size={14} /> שחזור ברירת מחדל
             </button>
-            <button
-              onClick={() => {
-                resetSessions();
-                toast.success("היסטוריית האימונים נוקתה");
-              }}
-              className="px-4 py-2 rounded-xl text-sm font-semibold"
-              style={{ background: "rgba(220, 38, 38, 0.16)", color: "var(--destructive)", border: "1px solid rgba(220, 38, 38, 0.32)" }}
-            >
-              נקה היסטוריית אימונים
-            </button>
+
+            {/* Clearing the history is the only irreversible action in
+                the app and it used to fire straight off a single
+                click. A confirmation step earns its interruption
+                here precisely because it is rare — the rest of the
+                app stays free of them so this one still registers. */}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <button
+                  className="btn-secondary text-sm"
+                  style={{ background: "var(--tint-danger)", color: "var(--destructive)", borderColor: "var(--line-danger)" }}
+                >
+                  נקה היסטוריית אימונים
+                </button>
+              </AlertDialogTrigger>
+              <AlertDialogContent style={{ direction: "rtl", textAlign: "right" }}>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>למחוק את היסטוריית האימונים?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {sessionCount === 0
+                      ? "אין מפגשים שמורים כרגע, ולכן לא ימחק דבר."
+                      : sessionCount === 1
+                        ? "מפגש אימון אחד יימחק מהמכשיר הזה, יחד עם הציון והסטטיסטיקות שלו. הפעולה אינה הפיכה."
+                        : `${sessionCount} מפגשי אימון יימחקו מהמכשיר הזה, יחד עם הציונים והסטטיסטיקות שלהם. הפעולה אינה הפיכה.`}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>ביטול</AlertDialogCancel>
+                  {/* The confirm button carries the destructive colour,
+                      not the brand one — the two buttons must not look
+                      equally safe when only one of them deletes data. */}
+                  <AlertDialogAction
+                    style={{
+                      background: "var(--destructive)",
+                      color: "var(--destructive-foreground)",
+                    }}
+                    onClick={() => {
+                      resetSessions();
+                      toast.success("היסטוריית האימונים נוקתה");
+                    }}
+                  >
+                    מחק היסטוריה
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </section>
 
         <div className="sticky bottom-0 py-2">
-          <button
-            disabled={!dirty}
-            onClick={saveSettings}
-            className="w-full py-3 rounded-xl font-black text-sm transition-all"
-            style={{
-              background: dirty ? "var(--primary)" : "var(--muted)",
-              color: dirty ? "var(--primary-foreground)" : "var(--muted-foreground)",
-              boxShadow: dirty ? "0 0 14px rgba(255, 165, 0, 0.3)" : "none",
-            }}
-          >
-            <Save size={16} className="inline ml-1" /> שמור הגדרות
+          <button disabled={!dirty} onClick={saveSettings} className="btn-primary w-full text-sm">
+            <Save size={16} /> שמור הגדרות
           </button>
         </div>
       </div>

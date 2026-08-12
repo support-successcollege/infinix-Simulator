@@ -1,43 +1,65 @@
 /* ============================================================
-   ResultsScreen — Quiz Results & Debrief
-   Design: Midnight Gradient — score ring, debrief, session summary
+   ResultsScreen — results and debrief
+
+   Editorial: the score is the headline, the breakdown is a ruled
+   list, and colour appears only where it means correct or wrong.
    ============================================================ */
 
 import { useEffect, useState } from "react";
+import { useReducedMotion } from "framer-motion";
 import { useApp } from "@/contexts/AppContext";
-import { RotateCcw, Home, TrendingUp, CheckCircle2, XCircle, Clock, Award } from "lucide-react";
+import { RotateCcw, Home, CheckCircle2, XCircle } from "lucide-react";
 
-import RESULTS_BG from "@/assets/results-bg.webp";
-
+/* The verdict band. Emoji are gone — the number and the wording
+   carry it, and a printed report does not wink at you. */
 function getScoreClass(score: number) {
-  if (score >= 90) return { label: "מצוין! 🏆", color: "var(--success)", bg: "rgba(34, 197, 94, 0.15)" };
-  if (score >= 75) return { label: "טוב מאוד 👍", color: "var(--primary)", bg: "rgba(255, 165, 0, 0.15)" };
-  if (score >= 60) return { label: "בסדר 📈", color: "var(--warning)", bg: "rgba(255, 165, 0, 0.15)" };
-  return { label: "צריך שיפור 💪", color: "var(--destructive)", bg: "rgba(220, 38, 38, 0.15)" };
+  if (score >= 90) return { label: "שליטה מלאה", color: "var(--success)", line: "var(--success)" };
+  if (score >= 75) return { label: "ביצוע טוב", color: "var(--foreground)", line: "var(--foreground)" };
+  if (score >= 60) return { label: "סביר", color: "var(--warning)", line: "var(--warning)" };
+  return { label: "דורש שיפור", color: "var(--destructive)", line: "var(--destructive)" };
 }
 
 export default function ResultsScreen() {
   const { currentSession, setScreen, trainingConfig } = useApp();
   const [displayScore, setDisplayScore] = useState(0);
   const [showDetails, setShowDetails] = useState(false);
+  const reduceMotion = useReducedMotion();
 
   const score = currentSession?.score ?? 0;
   const scoreInfo = getScoreClass(score);
 
-  // Animate score count-up
+  // Score count-up.
+  //
+  // The old version stepped a fixed amount on a 20ms setInterval, so
+  // the number climbed at a constant rate and then stopped dead —
+  // motion with no deceleration reads as a machine counting, not as
+  // a value arriving. This decelerates into the final number on the
+  // display's own clock (rAF), and honours reduced motion by simply
+  // showing the result.
   useEffect(() => {
-    let current = 0;
-    const step = score / 50;
-    const timer = setInterval(() => {
-      current = Math.min(current + step, score);
-      setDisplayScore(Math.round(current));
-      if (current >= score) clearInterval(timer);
-    }, 20);
-    return () => clearInterval(timer);
-  }, [score]);
+    if (reduceMotion) {
+      setDisplayScore(score);
+      return;
+    }
+
+    let frame = 0;
+    const durationMs = 900;
+    const start = performance.now();
+
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / durationMs);
+      // Cubic ease-out: fast off the mark, settling into the target.
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplayScore(Math.round(score * eased));
+      if (t < 1) frame = requestAnimationFrame(tick);
+    };
+
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [score, reduceMotion]);
 
   useEffect(() => {
-    const t = setTimeout(() => setShowDetails(true), 800);
+    const t = setTimeout(() => setShowDetails(true), 700);
     return () => clearTimeout(t);
   }, []);
 
@@ -56,179 +78,138 @@ export default function ResultsScreen() {
     ? Math.round(currentSession.answers.reduce((s, a) => s + a.timeSpent, 0) / currentSession.answers.length)
     : 0;
 
-  // Score ring: circumference for r=45 = 2π*45 ≈ 283
-  const circumference = 283;
-  const strokeOffset = circumference * (1 - score / 100);
-
   return (
     <div className="h-full overflow-y-auto" style={{ direction: "rtl" }}>
-      {/* Hero with results bg */}
-      <div
-        className="relative flex flex-col items-center justify-center py-10 px-4"
-        style={{
-          backgroundImage: `url(${RESULTS_BG})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          minHeight: "280px",
-        }}
-      >
-        <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0, 0, 0, 0.75) 0%, var(--background) 100%)" }} />
+      {/* Masthead.
+          The score is the headline: set at display size in the mono
+          face, with a rule underneath carrying the same value. The
+          dial it replaces said nothing the number did not. */}
+      <div className="masthead">
+        <div className="screen-body px-4 sm:px-6 pt-8 pb-6">
+          <p className="eyebrow mb-3">
+            תוצאות · {currentSession.arenaName} · {currentSession.mode === "full" ? "מבחן מלא" : currentSession.mode === "quick" ? "אימון מהיר" : "חזרה על טעויות"}
+          </p>
 
-        <div className="relative z-10 flex flex-col items-center gap-4">
-          {/* Score ring */}
-          <div className="relative w-36 h-36">
-            <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-              <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255, 255, 255, 0.1)" strokeWidth="6" />
-              <circle
-                cx="50" cy="50" r="45" fill="none"
-                stroke={scoreInfo.color}
-                strokeWidth="6"
-                strokeLinecap="round"
-                strokeDasharray={circumference}
-                strokeDashoffset={circumference}
-                style={{
-                  strokeDashoffset: strokeOffset,
-                  transition: "stroke-dashoffset 1.5s ease-out 0.3s",
-                }}
-              />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span
-                className="score-number text-4xl font-black"
-                style={{ color: scoreInfo.color, fontFamily: "Inter, sans-serif" }}
-              >
-                {displayScore}%
-              </span>
-            </div>
+          <div className="flex items-end justify-between gap-6 flex-wrap mb-4">
+            <span
+              className="score-number t-numeric leading-none"
+              style={{ fontSize: "clamp(3.5rem, 12vw, 6rem)", fontWeight: 500, color: scoreInfo.color }}
+            >
+              {displayScore}%
+            </span>
+            <h2 className="t-title pb-2">{scoreInfo.label}</h2>
           </div>
 
-          <div className="text-center">
-            <h2 className="text-2xl font-black text-white mb-1" style={{ fontFamily: "Heebo, sans-serif" }}>
-              {scoreInfo.label}
-            </h2>
-            <p className="text-sm" style={{ color: "#dfdfdf" }}>
-              {currentSession.arenaName} • {currentSession.mode === "full" ? "מבחן מלא" : currentSession.mode === "quick" ? "אימון מהיר" : "חזרה על טעויות"}
-            </p>
+          <div className="progress-bar-track" role="presentation">
+            <div
+              className="progress-bar-fill"
+              style={{
+                width: `${score}%`,
+                background: scoreInfo.color,
+                transition: "width 1.2s var(--ease-settle) 0.2s",
+              }}
+            />
           </div>
         </div>
       </div>
 
       {/* Content */}
-      <div className="p-4 flex flex-col gap-4">
-        {/* Quick stats */}
-        <div className="grid grid-cols-3 gap-3">
+      <div className="screen-body px-4 sm:px-6 py-6 flex flex-col gap-8">
+        {/* Figures */}
+        <div
+          className="grid grid-cols-3"
+          style={{ gap: "1px", background: "var(--tf-border)", border: "1px solid var(--tf-border)" }}
+        >
           {[
-            { label: "נכון", value: correctCount, icon: CheckCircle2, color: "var(--success)" },
-            { label: "שגוי", value: wrongCount, icon: XCircle, color: "var(--destructive)" },
-            { label: "זמן ממוצע", value: `${avgTime}שנ'`, icon: Clock, color: "var(--warning)" },
-          ].map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className="stat-card items-center text-center">
-              <Icon size={20} style={{ color }} />
-              <div className="text-2xl font-black" style={{ color: "var(--foreground)", fontFamily: "Inter, sans-serif" }}>{value}</div>
-              <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>{label}</div>
+            { label: "נכון", value: String(correctCount), color: "var(--success)" },
+            { label: "שגוי", value: String(wrongCount), color: "var(--destructive)" },
+            { label: "זמן ממוצע", value: `${avgTime}″`, color: "var(--foreground)" },
+          ].map(({ label, value, color }) => (
+            <div key={label} className="p-4" style={{ background: "var(--tf-surface)" }}>
+              <div className="eyebrow mb-2">{label}</div>
+              <div className="t-numeric leading-none" style={{ fontSize: "1.75rem", fontWeight: 500, color }}>
+                {value}
+              </div>
             </div>
           ))}
         </div>
 
-        {/* Debrief */}
-        <div
-          className="rounded-2xl p-5"
-          style={{ background: scoreInfo.bg, border: `1px solid ${scoreInfo.color}30` }}
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <Award size={18} style={{ color: scoreInfo.color }} />
-            <h3 className="font-black text-base" style={{ color: scoreInfo.color }}>דיבריף</h3>
+        {/* Debrief — a paragraph under a rule, the way a report reads. */}
+        <section>
+          <div className="section-head">
+            <span className="section-head-index">01</span>
+            <h3 className="section-head-title">דיבריף</h3>
           </div>
-          <p className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }}>
+          <p className="t-body max-w-prose" style={{ color: "var(--foreground)" }}>
             {score >= 90
-              ? `ביצועים מצוינים! ענית נכון על ${correctCount} מתוך ${totalQ} שאלות. אתה שולט היטב בחומר של זירת ${currentSession.arenaName}.`
+              ? `ענית נכון על ${correctCount} מתוך ${totalQ} שאלות. השליטה שלך בחומר של זירת ${currentSession.arenaName} מלאה.`
               : score >= 75
-                ? `ביצועים טובים מאוד! ענית נכון על ${correctCount} מתוך ${totalQ} שאלות. יש עוד מקום לשיפור ב-${wrongCount} שאלות שטעית בהן.`
+                ? `ענית נכון על ${correctCount} מתוך ${totalQ} שאלות. נותרו ${wrongCount} שאלות שטעית בהן — שם נמצא הפער.`
                 : score >= 60
-                  ? `ביצועים סבירים. ענית נכון על ${correctCount} מתוך ${totalQ} שאלות. מומלץ לחזור על הנושאים שגרמו לטעויות.`
-                  : `יש מקום לשיפור. ענית נכון על ${correctCount} מתוך ${totalQ} שאלות. מומלץ לחזור על החומר ולנסות שוב.`
+                  ? `ענית נכון על ${correctCount} מתוך ${totalQ} שאלות. מומלץ לחזור על הנושאים שגרמו לטעויות לפני הסבב הבא.`
+                  : `ענית נכון על ${correctCount} מתוך ${totalQ} שאלות. מומלץ לחזור על החומר ולהריץ סבב נוסף.`
             }
+            {" "}
+            {score >= trainingConfig.questionCount * 8
+              ? "המשך באותו קצב כדי לשמור על הרמה."
+              : "סבב נוסף בזירה הזו יסגור את הפער מהר יותר מאשר מעבר לזירה חדשה."}
           </p>
-        </div>
+        </section>
 
-        {/* Question breakdown */}
+        {/* Question breakdown — a ruled list, one row per question. */}
         {showDetails && currentSession.answers.length > 0 && (
-          <div>
-            <h3 className="font-bold text-sm mb-3" style={{ color: "var(--foreground)" }}>פירוט שאלות</h3>
-            <div className="flex flex-col gap-2">
+          <section>
+            <div className="section-head">
+              <span className="section-head-index">02</span>
+              <h3 className="section-head-title">פירוט שאלות</h3>
+              <span className="section-head-tail eyebrow">
+                {correctCount}/{totalQ}
+              </span>
+            </div>
+
+            <div className="data-list">
               {currentSession.questions.map((q, idx) => {
                 const answer = currentSession.answers[idx];
                 if (!answer) return null;
                 return (
-                  <div
-                    key={q.id}
-                    className="flex items-start gap-3 p-3 rounded-xl"
-                    style={{
-                      background: answer.isCorrect ? "rgba(34, 197, 94, 0.08)" : "rgba(220, 38, 38, 0.08)",
-                      border: `1px solid ${answer.isCorrect ? "rgba(34, 197, 94, 0.2)" : "rgba(220, 38, 38, 0.2)"}`,
-                    }}
-                  >
+                  <div key={q.id} className="data-row items-start">
+                    <span
+                      className="t-numeric flex-shrink-0 pt-0.5"
+                      style={{ color: "var(--muted-foreground)", fontSize: "0.75rem", minWidth: "2ch" }}
+                    >
+                      {String(idx + 1).padStart(2, "0")}
+                    </span>
                     {answer.isCorrect
-                      ? <CheckCircle2 size={16} style={{ color: "var(--success)", flexShrink: 0, marginTop: 2 }} />
-                      : <XCircle size={16} style={{ color: "var(--destructive)", flexShrink: 0, marginTop: 2 }} />
+                      ? <CheckCircle2 size={15} style={{ color: "var(--success)", flexShrink: 0, marginTop: 3 }} aria-label="נכון" />
+                      : <XCircle size={15} style={{ color: "var(--destructive)", flexShrink: 0, marginTop: 3 }} aria-label="שגוי" />
                     }
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium leading-snug" style={{ color: "var(--foreground)" }}>
-                        {idx + 1}. {q.text.length > 80 ? q.text.slice(0, 80) + "..." : q.text}
+                      <p className="text-sm leading-snug" style={{ color: "var(--foreground)" }}>
+                        {q.text.length > 90 ? q.text.slice(0, 90) + "…" : q.text}
                       </p>
                       {!answer.isCorrect && (
-                        <p className="text-xs mt-1" style={{ color: "var(--success)" }}>
-                          ✓ {q.options[q.correctIndex]}
+                        <p className="t-caption mt-1" style={{ color: "var(--success)" }}>
+                          {q.options[q.correctIndex]}
                         </p>
                       )}
                     </div>
-                    <span className="text-xs flex-shrink-0" style={{ color: "var(--muted-foreground)", fontFamily: "Inter, sans-serif" }}>
-                      {answer.timeSpent}שנ'
+                    <span className="t-numeric text-xs flex-shrink-0" style={{ color: "var(--muted-foreground)" }}>
+                      {answer.timeSpent}″
                     </span>
                   </div>
                 );
               })}
             </div>
-          </div>
+          </section>
         )}
-
-        {/* Performance trend */}
-        <div className="rounded-xl p-4" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
-          <div className="flex items-center gap-2 mb-2">
-            <TrendingUp size={16} style={{ color: "var(--primary)" }} />
-            <span className="text-sm font-bold" style={{ color: "var(--foreground)" }}>מגמת ביצועים</span>
-          </div>
-          <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
-            {score >= trainingConfig.questionCount * 8
-              ? "אתה בדרך הנכונה! המשך לאמן כדי לשמור על הרמה."
-              : "כל אימון מביא אותך קרוב יותר למטרה. אל תוותר!"}
-          </p>
-        </div>
-
         {/* Action buttons */}
-        <div className="flex gap-3 mt-2">
-          <button
-            onClick={() => setScreen("wizard")}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all"
-            style={{
-              background: "var(--primary)",
-              color: "var(--primary-foreground)",
-              boxShadow: "0 0 16px rgba(255, 165, 0, 0.3)",
-            }}
-          >
-            <RotateCcw size={16} />
+        <div className="flex gap-3">
+          <button onClick={() => setScreen("wizard")} className="btn-primary flex-1 text-sm">
+            <RotateCcw size={15} />
             אימון נוסף
           </button>
-          <button
-            onClick={() => setScreen("hub")}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all"
-            style={{
-              background: "var(--secondary)",
-              color: "var(--secondary-foreground)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <Home size={16} />
+          <button onClick={() => setScreen("hub")} className="btn-secondary flex-1 text-sm">
+            <Home size={15} />
             בית
           </button>
         </div>

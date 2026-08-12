@@ -1,14 +1,23 @@
 /* ============================================================
-   HubScreen — Training Hub / Selection Screen
-   Design: Midnight Gradient — dashboard with banners and stats
+   HubScreen — training hub
+
+   Editorial layout: a typographic masthead instead of a photo
+   band, then numbered sections divided by rules. The weekly goal
+   is a figure and a bar rather than a ring — a dial is decoration
+   where a number and a line carry the same reading.
    ============================================================ */
 
 import { useRef, type ChangeEventHandler } from "react";
-import { useApp } from "@/contexts/AppContext";
-import { BookOpen, Target, TrendingUp, Clock, Award, ChevronLeft, Upload, Play, FlaskConical, AlertTriangle } from "lucide-react";
+import { useApp, type BankSource } from "@/contexts/AppContext";
+import { Clock, ChevronLeft, Upload, Play, FlaskConical, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
-import HERO_BG from "@/assets/hero-bg.webp";
+const BANK_SOURCE_LABEL: Record<BankSource, string> = {
+  shared: "משותף",
+  local: "מקומי",
+  bundled: "מובנה",
+  none: "הדגמה",
+};
 
 export default function HubScreen() {
   const {
@@ -18,11 +27,10 @@ export default function HubScreen() {
     trainingConfig,
     importQuestionBank,
     clearImportedQuestionBank,
-    questionBankLoaded,
+    bankSource,
     isDemoContent,
     weeklyProgress,
     storageAvailable,
-    arenas,
   } = useApp();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -49,84 +57,69 @@ export default function HubScreen() {
     }
   };
 
-  const arenaIconByName = (name: string) => arenas.find(a => a.name === name)?.icon || "💼";
+  const modeLabel = (mode: string) =>
+    mode === "full" ? "מבחן מלא" : mode === "quick" ? "אימון מהיר" : "חזרה על טעויות";
+
+  const scoreColor = (score: number) =>
+    score >= 80 ? "var(--success)" : score >= 60 ? "var(--warning)" : "var(--destructive)";
 
   return (
     <div className="h-full overflow-y-auto" style={{ direction: "rtl" }}>
-      {/* Hero banner */}
-      <div
-        className="relative overflow-hidden"
-        style={{
-          backgroundImage: `url(${HERO_BG})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center 40%",
-          minHeight: "200px",
-        }}
-      >
-        <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, var(--background) 100%)" }} />
-        <div className="relative z-10 p-6 pb-8">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium mb-1" style={{ color: "var(--primary)" }}>
-                שלום, {user?.name?.split(" ")[0] ?? "סטודנט"} 👋
-              </p>
-              <h1 className="text-3xl font-black text-white mb-2" style={{ fontFamily: "Heebo, sans-serif" }}>
-                מוכן לאמן?
-              </h1>
-              <p className="text-sm" style={{ color: "#dfdfdf" }}>
-                {sessions.length > 0
-                  ? `${sessions.length} מפגשי אימון הושלמו`
-                  : "התחל את מסע האימון שלך היום"}
+      {/* Masthead */}
+      <div className="masthead">
+        <div className="screen-body-wide pt-8 pb-6 px-4 sm:px-6">
+          <div className="flex items-end justify-between gap-8 flex-wrap">
+            <div className="min-w-0">
+              <p className="eyebrow mb-3">INFINIX · לוח אימון</p>
+              <h1 className="t-display mb-2">מוכן לאמן?</h1>
+              <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
+                שלום, {user?.name?.split(" ")[0] ?? "סטודנט"}
+                {" · "}
+                {sessions.length === 0
+                  ? "התחל את מסע האימון שלך היום"
+                  : sessions.length === 1
+                    ? "מפגש אימון אחד הושלם"
+                    : `${sessions.length} מפגשי אימון הושלמו`}
               </p>
             </div>
 
-            {/* Weekly goal ring */}
-            <div className="flex flex-col items-center gap-1">
-              <div className="relative w-16 h-16">
-                <svg viewBox="0 0 64 64" className="w-full h-full -rotate-90">
-                  <circle cx="32" cy="32" r="26" fill="none" stroke="rgba(255, 255, 255, 0.14)" strokeWidth="5" />
-                  <circle
-                    cx="32" cy="32" r="26" fill="none"
-                    stroke="var(--primary)"
-                    strokeWidth="5"
-                    strokeLinecap="round"
-                    strokeDasharray="163.4"
-                    strokeDashoffset={163.4 * (1 - weeklyPct / 100)}
-                    style={{ transition: "stroke-dashoffset 1s ease" }}
-                  />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-xs font-black text-white">{weeklyPct}%</span>
-                </div>
+            {/* Weekly goal — a figure, a ratio and a rule. */}
+            <div className="flex-shrink-0 w-44">
+              <div className="flex items-baseline justify-between mb-1.5">
+                <span className="eyebrow">יעד שבועי</span>
+                <span className="t-numeric text-sm" style={{ color: "var(--muted-foreground)" }}>
+                  {weeklyProgress}/{weeklyGoal}
+                </span>
               </div>
-              <span className="text-xs text-center" style={{ color: "#c2c2c2" }}>
-                יעד שבועי
-              </span>
+              <div className="t-numeric leading-none mb-2" style={{ fontSize: "2.25rem", fontWeight: 500 }}>
+                {weeklyPct}%
+              </div>
+              <div className="progress-bar-track">
+                <div className="progress-bar-fill" style={{ width: `${weeklyPct}%` }} />
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Content */}
-      <div className="p-4 flex flex-col gap-4">
+      <div className="screen-body-wide px-4 sm:px-6 py-6 flex flex-col gap-6">
 
         {/* Demo-content notice — the arenas and questions below are
             placeholders until a real question bank is imported. */}
         {isDemoContent && (
           <div
             role="status"
-            className="rounded-xl p-4 flex items-start gap-3"
+            className="p-4 flex items-start gap-3"
             style={{
-              background: "rgba(255, 165, 0, 0.12)",
-              border: "1px solid rgba(255, 165, 0, 0.4)",
+              background: "var(--tint-primary-weak)",
+              borderInlineStart: "3px solid var(--accent)",
             }}
           >
-            <FlaskConical size={18} style={{ color: "var(--primary)", flexShrink: 0, marginTop: 2 }} />
+            <FlaskConical size={16} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 3 }} />
             <div className="flex-1">
-              <div className="text-sm font-bold" style={{ color: "var(--primary)" }}>
-                תוכן הדגמה
-              </div>
-              <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
+              <div className="eyebrow mb-1" style={{ color: "var(--accent)" }}>תוכן הדגמה</div>
+              <div className="text-sm" style={{ color: "var(--foreground)" }}>
                 הזירות והשאלות המוצגות הן דוגמאות בלבד ואינן חומר לימוד אמיתי.
                 העלה מאגר שאלות כדי להחליף אותן.
               </div>
@@ -138,18 +131,16 @@ export default function HubScreen() {
         {!storageAvailable && (
           <div
             role="alert"
-            className="rounded-xl p-4 flex items-start gap-3"
+            className="p-4 flex items-start gap-3"
             style={{
-              background: "rgba(220, 38, 38, 0.12)",
-              border: "1px solid rgba(220, 38, 38, 0.4)",
+              background: "var(--tint-danger-weak)",
+              borderInlineStart: "3px solid var(--destructive)",
             }}
           >
-            <AlertTriangle size={18} style={{ color: "var(--destructive)", flexShrink: 0, marginTop: 2 }} />
+            <AlertTriangle size={16} style={{ color: "var(--destructive)", flexShrink: 0, marginTop: 3 }} />
             <div className="flex-1">
-              <div className="text-sm font-bold" style={{ color: "var(--destructive)" }}>
-                אחסון מקומי חסום
-              </div>
-              <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
+              <div className="eyebrow mb-1" style={{ color: "var(--destructive)" }}>אחסון מקומי חסום</div>
+              <div className="text-sm" style={{ color: "var(--foreground)" }}>
                 הדפדפן חוסם שמירה מקומית, ולכן היסטוריית האימונים לא תישמר בין ביקורים.
                 נסה לצאת ממצב גלישה פרטית או לאפשר עוגיות.
               </div>
@@ -157,186 +148,169 @@ export default function HubScreen() {
           </div>
         )}
 
-        {/* Quick start CTA */}
-        <div
-          className="rounded-2xl p-5 relative overflow-hidden"
-          style={{
-            background: "linear-gradient(135deg, rgba(255, 165, 0, 0.2), rgba(183, 146, 79, 0.16))",
-            border: "1px solid rgba(255, 165, 0, 0.35)",
-          }}
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-black mb-1" style={{ color: "var(--foreground)", fontFamily: "Heebo, sans-serif" }}>
-                התחל אימון חדש
-              </h2>
-              <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
-                בחר זירה, הגדר פרמטרים, ותתחיל לאמן
-              </p>
-            </div>
-            <button
-              onClick={() => setScreen("wizard")}
-              className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm transition-all"
-              style={{
-                background: "var(--primary)",
-                color: "var(--primary-foreground)",
-                boxShadow: "0 0 20px rgba(255, 165, 0, 0.35)",
-              }}
-            >
-              <Play size={16} />
-              התחל
-            </button>
-          </div>
-        </div>
+        {/* Two columns once there is room to hold them. */}
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:items-start">
+          <div className="flex flex-col gap-8">
 
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: "ממוצע ציון", value: `${avgScore}%`, icon: TrendingUp, color: "var(--primary)" },
-            { label: "מפגשים", value: sessions.length.toString(), icon: BookOpen, color: "var(--success)" },
-            { label: "שבוע זה", value: `${weeklyProgress}/${weeklyGoal}`, icon: Target, color: "#b7924f" },
-          ].map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className="stat-card">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-2"
-                style={{ background: `${color}20`, border: `1px solid ${color}30` }}>
-                <Icon size={16} style={{ color }} />
+            {/* 01 — start */}
+            <section>
+              <div className="section-head">
+                <span className="section-head-index">01</span>
+                <h2 className="section-head-title">אימון חדש</h2>
               </div>
-              <div className="text-xl font-black" style={{ color: "var(--foreground)", fontFamily: "Inter, sans-serif" }}>{value}</div>
-              <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>{label}</div>
-            </div>
-          ))}
-        </div>
+              <div className="flex items-center justify-between gap-6 flex-wrap">
+                <p className="text-sm max-w-sm" style={{ color: "var(--muted-foreground)" }}>
+                  בחר זירת מכירה, קבע כמות שאלות וזמן לשאלה, והתחל סבב אימון.
+                </p>
+                <button onClick={() => setScreen("wizard")} className="btn-primary flex-shrink-0">
+                  <Play size={15} />
+                  התחל אימון
+                </button>
+              </div>
+            </section>
 
-        {/* Weekly progress bar */}
-        <div className="rounded-xl p-4" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>התקדמות שבועית</span>
-            <span className="text-sm font-bold" style={{ color: "var(--primary)" }}>{weeklyProgress} / {weeklyGoal} מפגשים</span>
-          </div>
-          <div className="progress-bar-track">
-            <div className="progress-bar-fill" style={{ width: `${weeklyPct}%` }} />
-          </div>
-          <p className="text-xs mt-2" style={{ color: "var(--muted-foreground)" }}>
-            {weeklyGoal - weeklyProgress > 0
-              ? `עוד ${weeklyGoal - weeklyProgress} מפגשים להשלמת היעד השבועי`
-              : "🎉 השגת את היעד השבועי!"}
-          </p>
-        </div>
+            {/* 02 — performance */}
+            <section>
+              <div className="section-head">
+                <span className="section-head-index">02</span>
+                <h2 className="section-head-title">ביצועים</h2>
+              </div>
 
-        {/* Recent sessions */}
-        {recentSessions.length > 0 && (
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold text-sm" style={{ color: "var(--foreground)" }}>מפגשים אחרונים</h3>
-              <button
-                onClick={() => setScreen("profile")}
-                className="flex items-center gap-1 text-xs font-semibold"
-                style={{ color: "var(--primary)" }}
+              {/* Figures share their rules with their neighbours: a
+                  1px grid gap over the border colour, so three cells
+                  read as one ruled table. */}
+              <div
+                className="grid grid-cols-3"
+                style={{ gap: "1px", background: "var(--tf-border)", border: "1px solid var(--tf-border)" }}
               >
-                הכל <ChevronLeft size={14} />
-              </button>
-            </div>
-            <div className="flex flex-col gap-2">
-              {recentSessions.map(session => (
-                <div
-                  key={session.id}
-                  className="flex items-center justify-between p-3 rounded-xl"
-                  style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-9 h-9 rounded-lg flex items-center justify-center text-base"
-                      style={{ background: "var(--accent)" }}
-                    >
-                      {arenaIconByName(session.arenaName)}
+                {[
+                  { label: "ממוצע ציון", value: `${avgScore}%` },
+                  { label: "מפגשים", value: sessions.length.toString() },
+                  { label: "שבוע זה", value: `${weeklyProgress}/${weeklyGoal}` },
+                ].map(({ label, value }) => (
+                  <div key={label} className="p-4" style={{ background: "var(--tf-surface)" }}>
+                    <div className="eyebrow mb-2">{label}</div>
+                    <div className="t-numeric leading-none" style={{ fontSize: "1.75rem", fontWeight: 500 }}>
+                      {value}
                     </div>
-                    <div>
-                      <div className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{session.arenaName}</div>
-                      <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                        {session.mode === "full" ? "מבחן מלא" : session.mode === "quick" ? "אימון מהיר" : "חזרה על טעויות"} •{" "}
-                        <Clock size={10} className="inline" /> {new Date(session.startTime).toLocaleDateString("he-IL")}
+                  </div>
+                ))}
+              </div>
+
+              <p className="t-caption mt-3" style={{ color: "var(--muted-foreground)" }}>
+                {weeklyGoal - weeklyProgress > 0
+                  ? `עוד ${weeklyGoal - weeklyProgress} מפגשים להשלמת היעד השבועי.`
+                  : "היעד השבועי הושג."}
+              </p>
+            </section>
+
+          </div>
+
+          <div className="flex flex-col gap-8">
+
+            {/* 03 — recent */}
+            {recentSessions.length > 0 && (
+              <section>
+                <div className="section-head">
+                  <span className="section-head-index">03</span>
+                  <h2 className="section-head-title">מפגשים אחרונים</h2>
+                  <button
+                    onClick={() => setScreen("profile")}
+                    className="section-head-tail flex items-center gap-1 text-xs font-semibold"
+                    style={{ color: "var(--accent)" }}
+                  >
+                    הכל <ChevronLeft size={13} />
+                  </button>
+                </div>
+
+                <div className="data-list">
+                  {recentSessions.map(session => (
+                    <div key={session.id} className="data-row">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold truncate" style={{ color: "var(--foreground)" }}>
+                          {session.arenaName}
+                        </div>
+                        <div className="t-caption flex items-center gap-1.5" style={{ color: "var(--muted-foreground)" }}>
+                          <span>{modeLabel(session.mode)}</span>
+                          <span aria-hidden="true">·</span>
+                          <Clock size={10} aria-hidden="true" />
+                          <span className="t-numeric">
+                            {new Date(session.startTime).toLocaleDateString("he-IL")}
+                          </span>
+                        </div>
+                      </div>
+                      <div
+                        className="t-numeric flex-shrink-0"
+                        style={{ fontSize: "1.125rem", fontWeight: 600, color: scoreColor(session.score) }}
+                      >
+                        {session.score}%
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="text-lg font-black"
-                      style={{
-                        color: session.score >= 80 ? "var(--success)" :
-                          session.score >= 60 ? "var(--warning)" : "var(--destructive)",
-                        fontFamily: "Inter, sans-serif"
-                      }}
-                    >
-                      {session.score}%
-                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Continue where the last configuration left off */}
+            {trainingConfig.arenaId && (
+              <div className="banner-card">
+                <div className="flex-1 min-w-0">
+                  <div className="eyebrow mb-1">המשך מבחן</div>
+                  <div className="text-sm font-semibold truncate" style={{ color: "var(--foreground)" }}>
+                    {trainingConfig.arenaName}
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Continue last session banner */}
-        {trainingConfig.arenaId && (
-          <div className="banner-card">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: "rgba(183, 146, 79, 0.2)", border: "1px solid rgba(183, 146, 79, 0.35)" }}>
-              <Award size={20} style={{ color: "var(--warning)" }} />
-            </div>
-            <div className="flex-1">
-              <div className="text-sm font-bold" style={{ color: "var(--foreground)" }}>המשך מבחן</div>
-              <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                זירה: {trainingConfig.arenaName}
+                <button onClick={() => setScreen("wizard")} className="btn-chip flex-shrink-0">
+                  המשך
+                </button>
               </div>
-            </div>
-            <button
-              onClick={() => setScreen("wizard")}
-              className="text-xs font-bold px-3 py-1.5 rounded-lg"
-              style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}
-            >
-              המשך
-            </button>
-          </div>
-        )}
+            )}
 
-        {/* JSON upload */}
-        <div
-          className="rounded-xl p-4 flex items-center gap-3"
-          style={{ background: "var(--tf-surface-soft)", border: "1px dashed var(--tf-border)" }}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json,application/json"
-            className="hidden"
-            onChange={handleFilePicked}
-          />
-          <Upload size={18} style={{ color: "var(--muted-foreground)" }} />
-          <div className="flex-1">
-            <div className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>טעינת מאגר שאלות</div>
-            <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-              {questionBankLoaded ? "מאגר פעיל נטען מהמערכת/JSON" : "העלה קובץ question_bank_infinitycloser.json"}
-            </div>
+            {/* 04 — question bank.
+                Naming the source matters now that there are three of
+                them: a manager who imports here changes only their own
+                browser, while publishing from the admin screen changes
+                what every student sees. */}
+            <section>
+              <div className="section-head">
+                <span className="section-head-index">04</span>
+                <h2 className="section-head-title">מאגר שאלות</h2>
+                <span className="section-head-tail eyebrow">{BANK_SOURCE_LABEL[bankSource]}</span>
+              </div>
+
+              <div className="flex items-start gap-3 flex-wrap">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json,application/json"
+                  className="hidden"
+                  onChange={handleFilePicked}
+                />
+                <Upload size={16} style={{ color: "var(--muted-foreground)", marginTop: 3 }} />
+                <p className="flex-1 min-w-[10rem] text-sm" style={{ color: "var(--muted-foreground)" }}>
+                  {bankSource === "shared"
+                    ? "המאגר המשותף שפורסם על ידי המנהל."
+                    : bankSource === "local"
+                      ? "מאגר שיובא לדפדפן הזה בלבד. תלמידים אחרים לא רואים אותו."
+                      : bankSource === "bundled"
+                        ? "המאגר שנבנה יחד עם האתר."
+                        : "העלה קובץ question_bank_infinitycloser.json כדי להחליף את תוכן ההדגמה."}
+                </p>
+                {bankSource === "local" && (
+                  <button onClick={clearImportedQuestionBank} className="btn-chip flex-shrink-0">
+                    הסר
+                  </button>
+                )}
+                <button onClick={handleUploadClick} className="btn-chip flex-shrink-0">
+                  העלה
+                </button>
+              </div>
+            </section>
+
           </div>
-          {questionBankLoaded && (
-            <button
-              onClick={clearImportedQuestionBank}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg"
-              style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}
-            >
-              איפוס
-            </button>
-          )}
-          <button
-            onClick={handleUploadClick}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg"
-            style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}
-          >
-            העלה
-          </button>
         </div>
 
-        <div className="h-4" /> {/* Bottom padding */}
+        <div className="h-4" />
       </div>
     </div>
   );
