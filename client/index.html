@@ -16,10 +16,16 @@
     <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
     <link rel="apple-touch-icon" href="%BASE_URL%favicon.svg" />
 
-    <!-- Open Graph / social previews -->
+    <!-- Open Graph / social previews.
+         The canonical and og:url are absolute because a share target
+         has no page context to resolve a relative path against; they
+         point at the production domain regardless of which preview
+         deployment served the page. -->
+    <link rel="canonical" href="https://simulatur.infinix.org.il/" />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="he_IL" />
     <meta property="og:site_name" content="INFINIX Simulator" />
+    <meta property="og:url" content="https://simulatur.infinix.org.il/" />
     <meta property="og:title" content="INFINIX Simulator — סימולטור אימון מכירות" />
     <meta
       property="og:description"
