@@ -61,15 +61,68 @@ export type {
   User,
 } from "@/types/app";
 
-// ── Bootstrap admin ────────────────────────────────────────────
-// Sourced from build-time env so the credential is not committed.
-// On a static build these values still end up inside the JS bundle
-// — the real protection is that `mustChangePassword` forces this
-// password to be rotated the first time it is used.
+// ── Seed accounts ──────────────────────────────────────────────
+// Sourced from build-time env so credentials are not committed. On a
+// static build the values still end up inside the JS bundle — the
+// real protection for the admin is that `mustChangePassword` forces
+// a rotation the first time it is used.
+//
+// These are *not* pre-created in every browser. They are matched at
+// sign-in, which fixes two things at once:
+//
+//   1. A visitor who never types an admin password never gets an
+//      admin account. The old code seeded one into every browser
+//      that so much as loaded the page.
+//   2. Rotating VITE_ADMIN_PASSWORD takes effect immediately. The
+//      old code hashed the value once, on the first visit, and then
+//      ignored the env var forever — so changing it in Vercel looked
+//      like it did nothing, because the browser was still holding an
+//      account built from the previous value.
 const BOOTSTRAP_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || "support@successcollege.co.il")
   .trim()
   .toLowerCase();
 const BOOTSTRAP_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "infinix-setup-2024";
+
+/** Optional shared trainee credential, so students can sign in at all. */
+const STUDENT_EMAIL = (import.meta.env.VITE_STUDENT_EMAIL || "").trim().toLowerCase();
+const STUDENT_PASSWORD = import.meta.env.VITE_STUDENT_PASSWORD || "";
+
+interface SeedAccount {
+  id: string;
+  name: string;
+  email: string;
+  password: string;
+  role: UserRole;
+  mustChangePassword: boolean;
+}
+
+const SEED_ACCOUNTS: SeedAccount[] = [
+  {
+    id: "u-admin",
+    name: "Support Admin",
+    email: BOOTSTRAP_EMAIL,
+    password: BOOTSTRAP_PASSWORD,
+    role: "manager",
+    mustChangePassword: true,
+  },
+  // A shared trainee login is only sensible because every browser
+  // keeps its own history: two students on the same credential still
+  // have separate sessions and scores. It is therefore not forced to
+  // rotate — the first student to do so would lock out the rest.
+  ...(STUDENT_EMAIL && STUDENT_PASSWORD
+    ? [{
+        id: "u-trainee",
+        name: "מתאמן",
+        email: STUDENT_EMAIL,
+        password: STUDENT_PASSWORD,
+        role: "trainee" as UserRole,
+        mustChangePassword: false,
+      }]
+    : []),
+];
+
+/** Salt used to keep a miss as slow as a hit. */
+const TIMING_SALT = "00000000000000000000000000000000";
 
 // ── Shared question bank ───────────────────────────────────────
 /**
@@ -330,28 +383,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // Fresh install: seed the single bootstrap admin.
+      // Fresh install: no accounts are created here. The seed
+      // credentials are matched in `login` instead, so this browser
+      // stays account-free until someone actually signs in.
       if (!isCryptoAvailable()) {
         console.error("[auth] Web Crypto unavailable — sign-in requires HTTPS or localhost");
-        if (!cancelled) setAuthReady(true);
-        return;
       }
-
-      const { salt, passwordHash } = await createCredential(BOOTSTRAP_PASSWORD);
-      if (cancelled) return;
-      setAuthUsers([
-        {
-          id: "u-admin",
-          name: "Support Admin",
-          email: BOOTSTRAP_EMAIL,
-          salt,
-          passwordHash,
-          role: "manager",
-          createdAt: new Date().toISOString(),
-          mustChangePassword: true,
-        },
-      ]);
-      setAuthReady(true);
+      if (!cancelled) setAuthReady(true);
     };
 
     bootstrap();
@@ -496,31 +534,60 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       const normalizedEmail = String(email || "").trim().toLowerCase();
+
+      const signIn = (account: AuthUserAccount) => {
+        setUser({
+          id: account.id,
+          name: account.name,
+          email: account.email,
+          role: account.role,
+          joinDate: account.createdAt,
+          weeklyGoal: 5,
+        });
+        setMustChangePassword(!!account.mustChangePassword);
+        setCurrentScreen("hub");
+      };
+
       const account = authUsers.find(a => a.email === normalizedEmail);
 
-      // Hash even when the account is missing, so a wrong email and a
-      // wrong password take the same amount of time to reject.
-      const probe = account ?? {
-        salt: "00000000000000000000000000000000",
-        passwordHash: "",
-      };
-      const matched = await verifyPassword(password, probe.salt, probe.passwordHash);
+      // A stored account always wins, so a rotated password cannot be
+      // undone by whatever the env var happens to say today.
+      if (account) {
+        const matched = await verifyPassword(password, account.salt, account.passwordHash);
+        if (!matched) return { ok: false, error: "מייל או סיסמה שגויים" };
+        signIn(account);
+        return { ok: true, mustChangePassword: !!account.mustChangePassword };
+      }
 
-      if (!account || !matched) {
+      // No account for this address yet. Seed credentials are read
+      // from the current build, so rotating one in Vercel takes
+      // effect on the next sign-in rather than never.
+      const seed = SEED_ACCOUNTS.find(
+        s => s.password && s.email === normalizedEmail && s.password === password
+      );
+
+      if (!seed) {
+        // Hash anyway, so a wrong email and a wrong password take the
+        // same amount of time to reject.
+        await verifyPassword(password, TIMING_SALT, "");
         return { ok: false, error: "מייל או סיסמה שגויים" };
       }
 
-      setUser({
-        id: account.id,
-        name: account.name,
-        email: account.email,
-        role: account.role,
-        joinDate: account.createdAt,
-        weeklyGoal: 5,
-      });
-      setMustChangePassword(!!account.mustChangePassword);
-      setCurrentScreen("hub");
-      return { ok: true, mustChangePassword: !!account.mustChangePassword };
+      const { salt, passwordHash } = await createCredential(seed.password);
+      const created: AuthUserAccount = {
+        id: seed.id,
+        name: seed.name,
+        email: seed.email,
+        salt,
+        passwordHash,
+        role: seed.role,
+        createdAt: new Date().toISOString(),
+        mustChangePassword: seed.mustChangePassword,
+      };
+
+      setAuthUsers(prev => [...prev, created]);
+      signIn(created);
+      return { ok: true, mustChangePassword: seed.mustChangePassword };
     },
     [authUsers]
   );
