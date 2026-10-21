@@ -27,11 +27,11 @@ export function normalizeDifficulty(v?: string): Question["difficulty"] {
 }
 
 export function buildArenaSummary(meta?: QuestionBankCategory): string {
-  if (!meta) return "אימון סימולציה מותאם זירה.";
+  if (!meta) return "תרגול שאלות מבחינות עבר.";
   const pains = Array.isArray(meta.painPoints) ? meta.painPoints.filter(Boolean) : [];
-  if (pains.length > 0) return `תרגול התנגדויות סביב ${pains.slice(0, 2).join(" ו")}.`;
-  if (meta.product && meta.nextStep) return `מכירת ${meta.product} עם דגש על ${meta.nextStep}.`;
-  return "אימון סימולציה מותאם זירה.";
+  if (pains.length > 0) return `דגשים: ${pains.slice(0, 2).join(" ו")}.`;
+  if (meta.product && meta.nextStep) return `${meta.product}, דגש על ${meta.nextStep}.`;
+  return "תרגול שאלות מבחינות עבר.";
 }
 
 /** The native InfinityCloser shape: { categories: { name: {...} } }. */

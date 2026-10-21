@@ -404,19 +404,19 @@ describe("buildArenas", () => {
 describe("buildArenaSummary", () => {
   it("prefers pain points, using at most the first two", () => {
     expect(buildArenaSummary({ painPoints: ["מחיר", "זמן", "אמון"] })).toBe(
-      "תרגול התנגדויות סביב מחיר וזמן."
+      "דגשים: מחיר וזמן."
     );
   });
 
   it("falls back to product and next step", () => {
     expect(buildArenaSummary({ product: "ביטוח חיים", nextStep: "פגישה" })).toBe(
-      "מכירת ביטוח חיים עם דגש על פגישה."
+      "ביטוח חיים, דגש על פגישה."
     );
   });
 
   it("has a default for empty metadata", () => {
-    expect(buildArenaSummary(undefined)).toBe("אימון סימולציה מותאם זירה.");
-    expect(buildArenaSummary({})).toBe("אימון סימולציה מותאם זירה.");
+    expect(buildArenaSummary(undefined)).toBe("תרגול שאלות מבחינות עבר.");
+    expect(buildArenaSummary({})).toBe("תרגול שאלות מבחינות עבר.");
   });
 });
 

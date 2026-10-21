@@ -268,7 +268,7 @@ export default function ManagerScreen() {
               <div className="grid grid-cols-3 gap-3">
                 <div className="stat-card"><span className="text-xs" style={{ color: "var(--muted-foreground)" }}>סה\"כ סשנים</span><span className="t-numeric text-2xl font-black" style={{ color: "var(--foreground)" }}>{sessions.length}</span></div>
                 <div className="stat-card"><span className="text-xs" style={{ color: "var(--muted-foreground)" }}>ציון ממוצע</span><span className="t-numeric text-2xl font-black" style={{ color: "var(--foreground)" }}>{sessions.length ? Math.round(sessions.reduce((s, x) => s + x.score, 0) / sessions.length) : 0}%</span></div>
-                <div className="stat-card"><span className="text-xs" style={{ color: "var(--muted-foreground)" }}>זירות פעילות</span><span className="t-numeric text-2xl font-black" style={{ color: "var(--foreground)" }}>{new Set(sessions.map(s => s.arenaName)).size}</span></div>
+                <div className="stat-card"><span className="text-xs" style={{ color: "var(--muted-foreground)" }}>נושאים פעילים</span><span className="t-numeric text-2xl font-black" style={{ color: "var(--foreground)" }}>{new Set(sessions.map(s => s.arenaName)).size}</span></div>
               </div>
             </div>
             <button onClick={exportReportCsv} className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}>

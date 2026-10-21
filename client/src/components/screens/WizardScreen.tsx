@@ -79,7 +79,7 @@ export default function WizardScreen() {
     if (!result.ok) toast.error(result.error || "לא ניתן להתחיל את האימון");
   };
 
-  const stepLabels = ["הגדרות", "זירה", "אישור"];
+  const stepLabels = ["הגדרות", "נושא", "אישור"];
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ direction: "rtl" }}>
@@ -169,7 +169,7 @@ export default function WizardScreen() {
             <div className="min-w-0">
               <div className="t-caption font-bold uppercase" style={{ color: "var(--muted-foreground)", letterSpacing: "0.08em" }}>יעד נוכחי</div>
               <div className="text-sm font-black truncate" style={{ color: "var(--foreground)" }}>
-                {trainingConfig.arenaName || "לא נבחרה זירה"}
+                {trainingConfig.arenaName || "לא נבחר נושא"}
               </div>
             </div>
             <button onClick={() => setStep(1)} className="btn-secondary text-sm">
@@ -349,7 +349,7 @@ function Step2Arena({ arenas, allArenas, selectedId, search, setSearch, onSelect
   // rendering on all of them at once.
   const leaderCount = allArenas.filter(a => a.questionCount === maxQuestions).length;
   const hasSoleLeader = maxQuestions > 0 && leaderCount === 1;
-  const visibleLabel = arenas.length === allArenas.length ? `${allArenas.length} זירות` : `${arenas.length} מתוך ${allArenas.length}`;
+  const visibleLabel = arenas.length === allArenas.length ? `${allArenas.length} נושאים` : `${arenas.length} מתוך ${allArenas.length}`;
 
   const difficultyLabel = (count: number) => {
     if (count >= 80) return "גבוהה";
@@ -362,10 +362,10 @@ function Step2Arena({ arenas, allArenas, selectedId, search, setSearch, onSelect
       <div className="flex-shrink-0 px-4 sm:px-6 pt-4 pb-3 border-b" style={{ borderColor: "var(--tf-border)" }}>
         <div className="screen-body-wide flex flex-col md:flex-row md:items-end md:justify-between gap-3">
           <div>
-            <p className="eyebrow mb-2">שלב 02 · טעינת זירה</p>
+            <p className="eyebrow mb-2">שלב 02 · בחירת נושא</p>
             <h3 className="t-title mb-1" style={{ color: "var(--foreground)" }}>בחר נושא לתרגול</h3>
             <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
-              הסימולטור יתאים את השאלות לתחום שתבחר. מומלץ לבחור זירה אחת ולהשלים סבב מלא.
+              הסימולטור יתאים את השאלות לתחום שתבחר. מומלץ לבחור נושא אחד ולהשלים סבב מלא.
             </p>
           </div>
           <div className="relative w-full md:max-w-xs">
@@ -373,7 +373,7 @@ function Step2Arena({ arenas, allArenas, selectedId, search, setSearch, onSelect
             <input
               type="text"
               className="tf-input"
-              placeholder="חיפוש זירה..."
+              placeholder="חיפוש נושא..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{ paddingRight: "2.5rem" }}
@@ -439,7 +439,7 @@ function Step2Arena({ arenas, allArenas, selectedId, search, setSearch, onSelect
         {arenas.length === 0 && (
           <div className="text-center py-12" style={{ color: "var(--muted-foreground)" }}>
             <Search size={32} className="mx-auto mb-3 opacity-40" />
-            <p>לא נמצאו זירות תואמות</p>
+            <p>לא נמצאו נושאים תואמים</p>
           </div>
         )}
         </div>
@@ -547,7 +547,7 @@ function Step3Confirm({
           { label: "מצב אימון", value: modeLabel },
           { label: "כמות שאלות", value: `${actualCount}` },
           { label: "זמן לשאלה", value: timeLabel },
-          { label: "זירה", value: arena?.name ?? config.arenaName },
+          { label: "נושא", value: arena?.name ?? config.arenaName },
           {
             label: hasFilters ? "שאלות אחרי סינון" : "שאלות במאגר",
             value: hasFilters && totalCount > 0
@@ -616,7 +616,7 @@ function Step3Confirm({
                 שאלות שחזרו ביותר ממועד אחד
               </div>
               <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                {facets.repeated} שאלות במאגר הזירה
+                {facets.repeated} שאלות במאגר הנושא
               </div>
             </div>
             <span
@@ -641,7 +641,7 @@ function Step3Confirm({
           >
             {noMatches
               ? "אין שאלות שמתאימות לסינון שבחרת — שנה או נקה את הסינון כדי להתחיל."
-              : `${matchCount} שאלות מתאימות לסינון הנוכחי, מתוך ${totalCount} בזירה.`}
+              : `${matchCount} שאלות מתאימות לסינון הנוכחי, מתוך ${totalCount} בנושא.`}
           </div>
         </div>
       )}
@@ -667,7 +667,7 @@ function Step3Confirm({
         >
           <Hash size={16} style={{ color: "var(--foreground)", flexShrink: 0, marginTop: 3 }} aria-hidden="true" />
           <p className="text-sm" style={{ color: "var(--foreground)" }}>
-            {hasFilters ? "לסינון שבחרת מתאימות" : "בזירה הזו יש"} {available} שאלות בלבד, ולכן
+            {hasFilters ? "לסינון שבחרת מתאימות" : "בנושא הזה יש"} {available} שאלות בלבד, ולכן
             האימון יכלול {actualCount} שאלות ולא {config.questionCount}. שאלות לא חוזרות על עצמן
             באותו מבחן.
           </p>

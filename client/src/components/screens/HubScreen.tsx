@@ -120,7 +120,7 @@ export default function HubScreen() {
             <div className="flex-1">
               <div className="eyebrow mb-1" style={{ color: "var(--accent)" }}>תוכן הדגמה</div>
               <div className="text-sm" style={{ color: "var(--foreground)" }}>
-                הזירות והשאלות המוצגות הן דוגמאות בלבד ואינן חומר לימוד אמיתי.
+                הנושאים והשאלות המוצגים הן דוגמאות בלבד ואינן חומר לימוד אמיתי.
                 העלה מאגר שאלות כדי להחליף אותן.
               </div>
             </div>

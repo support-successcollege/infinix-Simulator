@@ -908,14 +908,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       sessions.forEach(s => s.answers.forEach(a => !a.isCorrect && wrongIds.add(a.questionId)));
       const mistakesPool = pool.filter(q => wrongIds.has(q.id));
       if (mistakesPool.length === 0) {
-        return { ok: false, error: "אין עדיין שאלות שטעית בהן בזירה הזו" };
+        return { ok: false, error: "אין עדיין שאלות שטעית בהן בנושא הזה" };
       }
       pool = mistakesPool;
     }
 
     const questions = pickQuestions(pool, targetCount);
     if (questions.length === 0) {
-      return { ok: false, error: "לא נמצאו שאלות זמינות בזירה הזו" };
+      return { ok: false, error: "לא נמצאו שאלות זמינות בנושא הזה" };
     }
 
     setCurrentSession({

@@ -134,7 +134,7 @@ export default function ProfileScreen() {
           <section>
             <div className="section-head">
               <span className="section-head-index">02</span>
-              <h3 className="section-head-title">ביצועים לפי זירה</h3>
+              <h3 className="section-head-title">ביצועים לפי נושא</h3>
             </div>
             <div className="flex flex-col gap-2.5">
               {arenaStats.map(arena => (
