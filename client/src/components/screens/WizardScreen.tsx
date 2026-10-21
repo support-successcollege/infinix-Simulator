@@ -468,16 +468,16 @@ function FilterChips({ title, options, selected, onToggle }: {
               key={opt.value}
               onClick={() => onToggle(opt.value)}
               aria-pressed={isOn}
-              className="px-3 py-1.5 rounded-xl font-bold text-xs transition-all"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full font-bold text-xs transition-all"
               style={{
                 background: isOn ? "var(--primary)" : "var(--tf-surface)",
                 color: isOn ? "var(--primary-foreground)" : "var(--foreground)",
                 border: isOn ? "1px solid transparent" : "1px solid var(--tf-border)",
-                boxShadow: isOn ? "0 0 12px rgba(255, 165, 0, 0.3)" : "none",
+                boxShadow: isOn ? "var(--shadow-raised)" : "none",
               }}
             >
               {opt.label}
-              <span className="mr-1.5 opacity-70" style={{ fontFamily: "Inter, sans-serif" }}>
+              <span className="t-numeric opacity-70">
                 {opt.count}
               </span>
             </button>
@@ -654,7 +654,7 @@ function Step3Confirm({
         >
           <FlaskConical size={16} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 3 }} aria-hidden="true" />
           <p className="text-sm" style={{ color: "var(--foreground)" }}>
-            <strong>תוכן הדגמה</strong> — האימון ירוץ על שאלות דוגמה, לא על חומר לימוד אמיתי.
+            <strong>לא נטען מאגר שאלות</strong> — אין שאלות לתרגול עד שיועלה מאגר.
           </p>
         </div>
       )}

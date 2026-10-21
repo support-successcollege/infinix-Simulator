@@ -16,7 +16,7 @@ const BANK_SOURCE_LABEL: Record<BankSource, string> = {
   shared: "משותף",
   local: "מקומי",
   bundled: "מובנה",
-  none: "הדגמה",
+  none: "לא נטען",
 };
 
 export default function HubScreen() {
@@ -105,8 +105,7 @@ export default function HubScreen() {
       {/* Content */}
       <div className="screen-body-wide px-4 sm:px-6 py-6 flex flex-col gap-6">
 
-        {/* Demo-content notice — the arenas and questions below are
-            placeholders until a real question bank is imported. */}
+        {/* No question bank loaded — nothing to practise until one is. */}
         {isDemoContent && (
           <div
             role="status"
@@ -118,10 +117,9 @@ export default function HubScreen() {
           >
             <FlaskConical size={16} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 3 }} />
             <div className="flex-1">
-              <div className="eyebrow mb-1" style={{ color: "var(--accent)" }}>תוכן הדגמה</div>
+              <div className="eyebrow mb-1" style={{ color: "var(--accent)" }}>לא נטען מאגר שאלות</div>
               <div className="text-sm" style={{ color: "var(--foreground)" }}>
-                הנושאים והשאלות המוצגים הן דוגמאות בלבד ואינן חומר לימוד אמיתי.
-                העלה מאגר שאלות כדי להחליף אותן.
+                אין כרגע שאלות לתרגול. העלה קובץ מאגר שאלות כדי להתחיל.
               </div>
             </div>
           </div>
@@ -291,7 +289,7 @@ export default function HubScreen() {
                       ? "מאגר שיובא לדפדפן הזה בלבד. תלמידים אחרים לא רואים אותו."
                       : bankSource === "bundled"
                         ? "המאגר שנבנה יחד עם האתר."
-                        : "העלה קובץ question_bank_infinitycloser.json כדי להחליף את תוכן ההדגמה."}
+                        : "העלה קובץ question_bank_infinitycloser.json כדי להתחיל לתרגל."}
                 </p>
                 {bankSource === "local" && (
                   <button onClick={clearImportedQuestionBank} className="btn-chip flex-shrink-0">

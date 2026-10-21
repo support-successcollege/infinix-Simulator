@@ -619,7 +619,7 @@ function PublishPanel() {
     shared: "מאגר משותף — פעיל לכל התלמידים",
     local: "מאגר מקומי — רק בדפדפן הזה",
     bundled: "מאגר מובנה — נבנה יחד עם האתר",
-    none: "אין מאגר — תוכן הדגמה",
+    none: "אין מאגר שאלות",
   };
 
   const onPublish: ChangeEventHandler<HTMLInputElement> = async (e) => {

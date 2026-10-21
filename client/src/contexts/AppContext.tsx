@@ -24,7 +24,6 @@ import {
   validatePasswordStrength,
   verifyPassword,
 } from "@/lib/auth";
-import { DEMO_ARENAS, getDemoQuestions } from "@/lib/demoContent";
 import {
   EMPTY_FILTERS,
   buildArenas,
@@ -537,16 +536,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const realArenas = useMemo(() => buildArenas(questionBank), [questionBank]);
 
-  // A bank with zero usable questions is no better than no bank at
-  // all, so fall through to demo content rather than showing an
-  // arena list that can't start a quiz.
+  // No usable questions at all: there is no placeholder content to
+  // fall back on, so the UI shows a "load a question bank" notice and
+  // an empty topic list instead. (The flag keeps its historical name.)
   const isDemoContent = useMemo(
     () => realArenas.every(a => a.questionCount === 0),
     [realArenas]
   );
 
   const arenas = useMemo(
-    () => (isDemoContent ? DEMO_ARENAS : realArenas),
+    () => (isDemoContent ? [] : realArenas),
     [isDemoContent, realArenas]
   );
 
@@ -891,16 +890,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ? []
       : toQuizQuestions(questionBank?.categories?.[arenaName]?.questions, arenaName);
 
-    const usingDemo = bankQuestions.length === 0;
-    let pool: Question[] = usingDemo ? getDemoQuestions(arenaName) : bankQuestions;
+    if (bankQuestions.length === 0) {
+      return { ok: false, error: "לא נמצאו שאלות זמינות בנושא הזה" };
+    }
 
-    // Demo questions carry no exam taxonomy, so filtering them would
-    // always wipe the pool out. They stay exempt.
-    if (!usingDemo) {
-      pool = filterQuestions(pool, trainingConfig.filters);
-      if (pool.length === 0) {
-        return { ok: false, error: "אין שאלות שמתאימות לסינון שבחרת" };
-      }
+    let pool: Question[] = filterQuestions(bankQuestions, trainingConfig.filters);
+    if (pool.length === 0) {
+      return { ok: false, error: "אין שאלות שמתאימות לסינון שבחרת" };
     }
 
     if (trainingConfig.mode === "mistakes") {
@@ -926,7 +922,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       answers: [],
       startTime: new Date().toISOString(),
       score: 0,
-      isDemo: usingDemo,
+      isDemo: false,
     });
     setCurrentQuestionIndex(0);
     setLastAnswer(null);
@@ -1107,4 +1103,3 @@ export function useApp() {
   return ctx;
 }
 
-export { DEMO_ARENAS };
