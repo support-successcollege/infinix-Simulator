@@ -67,11 +67,11 @@ export default function HubScreen() {
     <div className="h-full overflow-y-auto" style={{ direction: "rtl" }}>
       {/* Masthead */}
       <div className="masthead">
-        <div className="screen-body-wide pt-8 pb-6 px-4 sm:px-6">
+        <div className="screen-body-wide pt-10 pb-9 px-4 sm:px-6">
           <div className="flex items-end justify-between gap-8 flex-wrap">
             <div className="min-w-0">
               <p className="eyebrow mb-3">INFINIX · לוח אימון</p>
-              <h1 className="t-display mb-2">מוכן לאמן?</h1>
+              <h1 className="t-display mb-2">מוכן לתרגל?</h1>
               <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
                 שלום, {user?.name?.split(" ")[0] ?? "סטודנט"}
                 {" · "}
@@ -110,7 +110,7 @@ export default function HubScreen() {
         {isDemoContent && (
           <div
             role="status"
-            className="p-4 flex items-start gap-3"
+            className="p-4 flex items-start gap-3 rounded-xl"
             style={{
               background: "var(--tint-primary-weak)",
               borderInlineStart: "3px solid var(--accent)",
@@ -131,7 +131,7 @@ export default function HubScreen() {
         {!storageAvailable && (
           <div
             role="alert"
-            className="p-4 flex items-start gap-3"
+            className="p-4 flex items-start gap-3 rounded-xl"
             style={{
               background: "var(--tint-danger-weak)",
               borderInlineStart: "3px solid var(--destructive)",
@@ -158,9 +158,9 @@ export default function HubScreen() {
                 <span className="section-head-index">01</span>
                 <h2 className="section-head-title">אימון חדש</h2>
               </div>
-              <div className="flex items-center justify-between gap-6 flex-wrap">
-                <p className="text-sm max-w-sm" style={{ color: "var(--muted-foreground)" }}>
-                  בחר זירת מכירה, קבע כמות שאלות וזמן לשאלה, והתחל סבב אימון.
+              <div className="surface-card p-5 sm:p-6 flex items-center justify-between gap-6 flex-wrap">
+                <p className="text-base max-w-sm" style={{ color: "var(--muted-foreground)" }}>
+                  בחר נושא בחינה, קבע כמות שאלות וזמן לשאלה, והתחל לתרגל.
                 </p>
                 <button onClick={() => setScreen("wizard")} className="btn-primary flex-shrink-0">
                   <Play size={15} />
@@ -179,16 +179,13 @@ export default function HubScreen() {
               {/* Figures share their rules with their neighbours: a
                   1px grid gap over the border colour, so three cells
                   read as one ruled table. */}
-              <div
-                className="grid grid-cols-3"
-                style={{ gap: "1px", background: "var(--tf-border)", border: "1px solid var(--tf-border)" }}
-              >
+              <div className="grid grid-cols-3 gap-3">
                 {[
                   { label: "ממוצע ציון", value: `${avgScore}%` },
                   { label: "מפגשים", value: sessions.length.toString() },
                   { label: "שבוע זה", value: `${weeklyProgress}/${weeklyGoal}` },
                 ].map(({ label, value }) => (
-                  <div key={label} className="p-4" style={{ background: "var(--tf-surface)" }}>
+                  <div key={label} className="stat-card">
                     <div className="eyebrow mb-2">{label}</div>
                     <div className="t-numeric leading-none" style={{ fontSize: "1.75rem", fontWeight: 500 }}>
                       {value}
@@ -223,7 +220,7 @@ export default function HubScreen() {
                   </button>
                 </div>
 
-                <div className="data-list">
+                <div className="data-list surface-card px-4">
                   {recentSessions.map(session => (
                     <div key={session.id} className="data-row">
                       <div className="min-w-0">
@@ -278,7 +275,7 @@ export default function HubScreen() {
                 <span className="section-head-tail eyebrow">{BANK_SOURCE_LABEL[bankSource]}</span>
               </div>
 
-              <div className="flex items-start gap-3 flex-wrap">
+              <div className="surface-card p-4 flex items-start gap-3 flex-wrap">
                 <input
                   ref={fileInputRef}
                   type="file"

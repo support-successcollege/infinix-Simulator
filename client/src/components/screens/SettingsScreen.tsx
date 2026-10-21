@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useApp, type TrainingMode } from "@/contexts/AppContext";
-import { Save, RotateCcw } from "lucide-react";
+import { Save, RotateCcw, Sun, Moon, LogOut } from "lucide-react";
+import { useTheme } from "@/contexts/ThemeContext";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -24,7 +25,8 @@ const COUNT_OPTIONS = [5, 10, 15, 20, 30];
 const TIME_OPTIONS = [0, 30, 60, 90, 120];
 
 export default function SettingsScreen() {
-  const { user, sessions, trainingConfig, setTrainingConfig, updateUserProfile, resetSessions, changePassword } = useApp();
+  const { user, sessions, trainingConfig, setTrainingConfig, updateUserProfile, resetSessions, changePassword, logout } = useApp();
+  const { theme, toggleTheme } = useTheme();
   const sessionCount = sessions.length;
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -95,6 +97,18 @@ export default function SettingsScreen() {
           <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
             התאמת סביבת העבודה שלך והעדפות ברירת המחדל לאימון.
           </p>
+          {/* Theme and sign-out live in the side rail on desktop; on a
+              phone the rail is a tab bar without them, so they sit here. */}
+          <div className="flex gap-2 mt-4 md:hidden">
+            <button onClick={toggleTheme} className="btn-chip">
+              {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+              {theme === "dark" ? "מצב בהיר" : "מצב כהה"}
+            </button>
+            <button onClick={logout} className="btn-chip">
+              <LogOut size={14} />
+              התנתק
+            </button>
+          </div>
         </div>
 
         <section>

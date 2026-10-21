@@ -86,45 +86,39 @@ export default function AuthScreen() {
 
   return (
     <div className="app-shell" style={{ direction: "rtl" }}>
-      {/* Left panel — an ink plate carrying the masthead. The
-          photograph it replaces was doing nothing the type cannot,
-          and it fought the paper on the other half of the split. */}
+      {/* Left panel — the navy hero band shared with every masthead. */}
       <div
-        className="hidden lg:flex flex-col justify-between flex-1"
-        style={{ background: "#16171a", color: "#f2f1ed" }}
+        className="masthead hidden lg:flex flex-col justify-between flex-1"
+        style={{ borderRadius: 0 }}
       >
         <div className="p-10">
           <Wordmark size="lg" tone="onDark" />
         </div>
 
         <div className="p-10 pb-14">
-          <p className="eyebrow mb-5" style={{ color: "#8d8f95" }}>סימולטור אימון מכירות</p>
+          <p className="eyebrow mb-5" style={{ color: "var(--accent)" }}>סימולטור בחינות רישוי</p>
           <h1 className="t-display mb-5" style={{ fontSize: "clamp(2.4rem, 3.4vw, 3.4rem)" }}>
-            אמן את כישורי
+            מתרגלים חכם,
             <br />
-            המכירות שלך
+            עוברים בביטחון
           </h1>
-          <p className="text-base mb-9 max-w-md" style={{ color: "#b9bbc0" }}>
-            שאלות מהשטח, משוב מיידי אחרי כל תשובה, וניתוח ביצועים לאורך זמן.
+          <p className="text-base mb-9 max-w-md" style={{ color: "var(--hero-ink-soft)" }}>
+            שאלות מבחינות עבר של הרשויות, משוב מיידי אחרי כל תשובה ומעקב התקדמות לקראת הבחינה.
           </p>
 
-          {/* A numbered list under rules — the same device the app
-              uses for its sections. */}
-          <div style={{ borderTop: "1px solid #33363c" }}>
+          <div className="flex flex-col gap-3 max-w-md">
             {[
-              "זירות התמחות מרובות",
-              "מעקב ביצועים בזמן אמת",
+              "ביטוח, פנסיה ושוק ההון במקום אחד",
               "משוב מיידי אחרי כל תשובה",
+              "מעקב ביצועים לאורך זמן",
             ].map((text, i) => (
               <div
                 key={text}
-                className="flex items-baseline gap-4 py-3"
-                style={{ borderBottom: "1px solid #33363c" }}
+                className="flex items-center gap-3 px-4 py-3"
+                style={{ background: "rgba(255,255,255,0.06)", borderRadius: 12 }}
               >
-                <span className="t-numeric text-xs" style={{ color: "#8d8f95" }}>
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <span className="text-sm">{text}</span>
+                <span className="section-head-index">{i + 1}</span>
+                <span className="text-sm font-semibold">{text}</span>
               </div>
             ))}
           </div>

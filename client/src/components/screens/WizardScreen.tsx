@@ -196,7 +196,7 @@ function Step1Settings({ config, setConfig }: {
           <span className="section-head-index">01</span>
           <h3 className="section-head-title">מצב אימון</h3>
         </div>
-        <div style={{ borderTop: "var(--rule-hair)" }}>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {TRAINING_MODES.map(mode => {
             const isSelected = config.mode === mode.id;
             return (
@@ -204,16 +204,11 @@ function Step1Settings({ config, setConfig }: {
                 key={mode.id}
                 onClick={() => setConfig({ mode: mode.id })}
                 aria-pressed={isSelected}
-                className="w-full flex items-center gap-3 px-3 py-3.5 text-right"
-                style={{
-                  borderBottom: "var(--rule-hair)",
-                  background: isSelected ? "var(--foreground)" : "transparent",
-                  color: isSelected ? "var(--background)" : "var(--foreground)",
-                  transition: "background-color var(--dur-fast) var(--ease-settle), color var(--dur-fast) var(--ease-settle)",
-                }}
+                className={`arena-card w-full flex items-start gap-3 ${isSelected ? "selected" : ""}`}
               >
+                <span className="text-2xl leading-none" aria-hidden="true">{mode.icon}</span>
                 <div className="flex-1">
-                  <div className="font-semibold text-sm">{mode.label}</div>
+                  <div className="t-heading">{mode.label}</div>
                   <div
                     className="t-caption"
                     style={{ color: isSelected ? "inherit" : "var(--muted-foreground)", opacity: isSelected ? 0.75 : 1 }}
@@ -244,9 +239,9 @@ function Step1Settings({ config, setConfig }: {
                 aria-pressed={isSelected}
                 className="btn-chip"
                 style={{
-                  background: isSelected ? "var(--foreground)" : "transparent",
-                  color: isSelected ? "var(--background)" : "var(--foreground)",
-                  borderColor: "var(--foreground)",
+                  background: isSelected ? "var(--primary)" : "var(--tf-surface)",
+                  color: isSelected ? "var(--primary-foreground)" : "var(--foreground)",
+                  borderColor: isSelected ? "var(--primary)" : "var(--tf-border)",
                   minWidth: "3.25rem",
                 }}
               >
@@ -273,9 +268,9 @@ function Step1Settings({ config, setConfig }: {
                 aria-pressed={isSelected}
                 className="btn-chip"
                 style={{
-                  background: isSelected ? "var(--foreground)" : "transparent",
-                  color: isSelected ? "var(--background)" : "var(--foreground)",
-                  borderColor: "var(--foreground)",
+                  background: isSelected ? "var(--primary)" : "var(--tf-surface)",
+                  color: isSelected ? "var(--primary-foreground)" : "var(--foreground)",
+                  borderColor: isSelected ? "var(--primary)" : "var(--tf-border)",
                 }}
               >
                 {opt.label}
@@ -319,7 +314,7 @@ function Step2Arena({ arenas, allArenas, selectedId, search, setSearch, onSelect
         <div className="screen-body-wide flex flex-col md:flex-row md:items-end md:justify-between gap-3">
           <div>
             <p className="eyebrow mb-2">שלב 02 · טעינת זירה</p>
-            <h3 className="t-title mb-1" style={{ color: "var(--foreground)" }}>בחר את זירת המכירה</h3>
+            <h3 className="t-title mb-1" style={{ color: "var(--foreground)" }}>בחר נושא לתרגול</h3>
             <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
               הסימולטור יתאים את השאלות לתחום שתבחר. מומלץ לבחור זירה אחת ולהשלים סבב מלא.
             </p>

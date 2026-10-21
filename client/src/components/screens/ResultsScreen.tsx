@@ -117,15 +117,14 @@ export default function ResultsScreen() {
       <div className="screen-body px-4 sm:px-6 py-6 flex flex-col gap-8">
         {/* Figures */}
         <div
-          className="grid grid-cols-3"
-          style={{ gap: "1px", background: "var(--tf-border)", border: "1px solid var(--tf-border)" }}
+          className="grid grid-cols-3 gap-3"
         >
           {[
             { label: "נכון", value: String(correctCount), color: "var(--success)" },
             { label: "שגוי", value: String(wrongCount), color: "var(--destructive)" },
             { label: "זמן ממוצע", value: `${avgTime}″`, color: "var(--foreground)" },
           ].map(({ label, value, color }) => (
-            <div key={label} className="p-4" style={{ background: "var(--tf-surface)" }}>
+            <div key={label} className="stat-card">
               <div className="eyebrow mb-2">{label}</div>
               <div className="t-numeric leading-none" style={{ fontSize: "1.75rem", fontWeight: 500, color }}>
                 {value}

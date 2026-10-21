@@ -34,7 +34,7 @@ export default function Wordmark({ size = "md", tone = "auto", className = "" }:
       className={`wordmark ${className}`}
       style={{
         fontSize: SIZES[size],
-        color: onDark ? "#f2f1ed" : "var(--foreground)",
+        color: onDark ? "#fbfaf6" : "var(--foreground)",
       }}
       role="img"
       aria-label="INFINIX"
@@ -43,7 +43,7 @@ export default function Wordmark({ size = "md", tone = "auto", className = "" }:
           is the second I and is coloured with it. Spelling it "INFIN"
           + "X" would drop a letter — the mark is INFIN-IX. */}
       <span aria-hidden="true">INFIN</span>
-      <span aria-hidden="true" style={{ color: onDark ? "#93a6ff" : "var(--accent)" }}>IX</span>
+      <span aria-hidden="true" style={{ color: onDark ? "#e2b555" : "var(--accent-bright)" }}>IX</span>
     </span>
   );
 }

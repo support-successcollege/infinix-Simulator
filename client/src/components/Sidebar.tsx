@@ -23,14 +23,16 @@ interface NavItem {
   label: string;
   icon: React.ComponentType<{ size?: number; color?: string }>;
   managerOnly?: boolean;
+  /** Shorter label for the phone tab bar. */
+  mobileLabel?: string;
 }
 
 /* Labels name what is behind them rather than reaching for a safe
    umbrella term — "בית" is where you are, not a category. */
 const NAV_ITEMS: NavItem[] = [
   { id: "hub", label: "בית", icon: Home },
-  { id: "wizard", label: "אימון חדש", icon: BookOpen },
-  { id: "profile", label: "הביצועים שלי", icon: User },
+  { id: "wizard", label: "אימון חדש", icon: BookOpen, mobileLabel: "אימון" },
+  { id: "profile", label: "הביצועים שלי", icon: User, mobileLabel: "ביצועים" },
   { id: "settings", label: "הגדרות", icon: Settings },
   { id: "manager", label: "ניהול", icon: Shield, managerOnly: true },
 ];
@@ -56,10 +58,10 @@ export default function Sidebar() {
       {/* Masthead of the rail. Collapsed it is the mark alone; opened
           it gains the descriptor underneath, on the same baseline
           grid as the nav below it. */}
-      <div className={`mb-6 ${expanded ? "w-full px-3" : "px-1"}`}>
-        <Wordmark size={expanded ? "md" : "sm"} />
+      <div className={`sidebar-brand mb-6 ${expanded ? "w-full px-3" : "px-1"}`}>
+        <Wordmark size={expanded ? "md" : "sm"} tone="onDark" />
         {expanded && (
-          <div className="eyebrow mt-1">Simulator</div>
+          <div className="eyebrow mt-1" style={{ color: "var(--sidebar-foreground)" }}>Simulator</div>
         )}
       </div>
 
@@ -85,9 +87,9 @@ export default function Sidebar() {
                   />
                 )}
                 <Icon size={19} />
-                {expanded && (
-                  <span className="text-sm font-bold whitespace-nowrap">{item.label}</span>
-                )}
+                {expanded && <span className="nav-label">{item.label}</span>}
+                {/* Phones show the rail as a bottom tab bar, labels under icons. */}
+                <span className="nav-label-mobile" >{item.mobileLabel ?? item.label}</span>
               </button>
             );
           })}
@@ -95,28 +97,26 @@ export default function Sidebar() {
       </LayoutGroup>
 
       {/* Bottom actions */}
-      <div className="flex flex-col gap-1 w-full mt-auto">
+      <div className="sidebar-secondary flex flex-col gap-1 w-full mt-auto">
         {/* Theme toggle */}
         <button
           onClick={toggleTheme}
           className="nav-item"
-          style={{ color: "var(--muted-foreground)" }}
           title={!expanded ? (theme === "dark" ? "מצב בהיר" : "מצב כהה") : undefined}
           aria-label={theme === "dark" ? "מעבר למצב בהיר" : "מעבר למצב כהה"}
         >
           {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
-          {expanded && <span className="text-sm font-bold whitespace-nowrap">{theme === "dark" ? "מצב בהיר" : "מצב כהה"}</span>}
+          {expanded && <span className="nav-label">{theme === "dark" ? "מצב בהיר" : "מצב כהה"}</span>}
         </button>
 
         {/* Logout */}
         <button
           onClick={logout}
           className="nav-item"
-          style={{ color: "var(--muted-foreground)" }}
           title={!expanded ? "התנתק" : undefined}
         >
           <LogOut size={19} />
-          {expanded && <span className="text-sm font-bold whitespace-nowrap">התנתק</span>}
+          {expanded && <span className="nav-label">התנתק</span>}
         </button>
 
         {/* Expand/collapse toggle */}
@@ -131,7 +131,7 @@ export default function Sidebar() {
           aria-label={expanded ? "כווץ תפריט" : "הרחב תפריט"}
         >
           {expanded ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}
-          {expanded && <span className="text-xs font-bold whitespace-nowrap">כווץ</span>}
+          {expanded && <span className="nav-label">כווץ</span>}
         </button>
       </div>
     </aside>

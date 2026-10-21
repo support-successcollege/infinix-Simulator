@@ -51,13 +51,12 @@ export default function ProfileScreen() {
       {/* Masthead */}
       <div className="masthead">
         <div className="screen-body px-4 sm:px-6 pt-8 pb-6 flex items-start gap-5">
-          {/* An ink square with the initial. A gradient avatar is a
-              badge; this is a printer's mark. */}
+          {/* Initial in a gold disc. */}
           <div
-            className="w-14 h-14 flex items-center justify-center flex-shrink-0"
+            className="w-14 h-14 flex items-center justify-center flex-shrink-0 rounded-full"
             style={{
-              background: "var(--foreground)",
-              color: "var(--background)",
+              background: "var(--accent-bright)",
+              color: "#14213d",
               fontFamily: "var(--font-display)",
               fontSize: "1.5rem",
               fontWeight: 700,
@@ -79,10 +78,9 @@ export default function ProfileScreen() {
       </div>
 
       <div className="screen-body p-4 sm:px-6 flex flex-col gap-4">
-        {/* Key figures — four cells of one ruled table. */}
+        {/* Key figures. */}
         <div
-          className="grid grid-cols-2 md:grid-cols-4"
-          style={{ gap: "1px", background: "var(--tf-border)", border: "1px solid var(--tf-border)" }}
+          className="grid grid-cols-2 md:grid-cols-4 gap-3"
         >
           {[
             { label: "ממוצע ציון", value: `${avgScore}%` },
@@ -90,7 +88,7 @@ export default function ProfileScreen() {
             { label: "מפגשים", value: sessions.length.toString() },
             { label: "דיוק כולל", value: `${accuracy}%` },
           ].map(({ label, value }) => (
-            <div key={label} className="p-4" style={{ background: "var(--tf-surface)" }}>
+            <div key={label} className="stat-card">
               <div className="eyebrow mb-2">{label}</div>
               <div className="t-numeric leading-none" style={{ fontSize: "1.75rem", fontWeight: 500 }}>{value}</div>
             </div>

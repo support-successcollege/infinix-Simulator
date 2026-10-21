@@ -21,6 +21,9 @@ import { ChevronLeft, Clock, AlertTriangle, CheckCircle2, XCircle, FlaskConical 
 const CHROME_TOP_FALLBACK = 92;
 const CHROME_BOTTOM_FALLBACK = 92;
 
+/** Answer keys in Hebrew order — matches how licensing exams label options. */
+const HEBREW_KEYS = ["א", "ב", "ג", "ד", "ה", "ו"];
+
 export default function QuizScreen() {
   const {
     currentSession,
@@ -100,6 +103,25 @@ export default function QuizScreen() {
     const timeSpent = Math.round((Date.now() - startTimeRef.current) / 1000);
     submitAnswer(index, timeSpent);
   }, [isShowingFeedback, selectedIndex, submitAnswer]);
+
+  // Keyboard: 1–6 picks an answer, Enter moves on after feedback.
+  const optionCount = currentQuestion?.options.length ?? 0;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      if (!isShowingFeedback) {
+        const n = Number(e.key);
+        if (Number.isInteger(n) && n >= 1 && n <= optionCount) {
+          e.preventDefault();
+          handleSelect(n - 1);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isShowingFeedback, optionCount, handleSelect]);
 
   if (!currentQuestion || !currentSession) {
     return (
@@ -184,26 +206,19 @@ export default function QuizScreen() {
                 disabled={isShowingFeedback || selectedIndex !== null}
               >
                 <div className="flex items-center gap-3">
-                  <span
-                    className="w-6 h-6 flex items-center justify-center text-xs flex-shrink-0 t-numeric"
-                    style={{
-                      border: "1px solid currentColor",
-                      color: isRevealedCorrect
-                        ? "var(--success)"
-                        : isRevealedWrong
-                          ? "var(--destructive)"
-                          : "var(--muted-foreground)",
-                    }}
-                  >
+                  <span className="answer-key" aria-hidden="true">
                     {isRevealedCorrect ? (
-                      <CheckCircle2 size={13} />
+                      <CheckCircle2 size={16} />
                     ) : isRevealedWrong ? (
-                      <XCircle size={13} />
+                      <XCircle size={16} />
                     ) : (
-                      String.fromCharCode(65 + index) // A, B, C, D
+                      HEBREW_KEYS[index] ?? index + 1
                     )}
                   </span>
                   <span className="flex-1 text-right">{option}</span>
+                  {!isShowingFeedback && index < 9 && (
+                    <span className="kbd-hint hidden md:inline-flex" aria-hidden="true">{index + 1}</span>
+                  )}
                 </div>
               </button>
             );
@@ -261,7 +276,7 @@ export default function QuizScreen() {
           {/* Timer — polite so it isn't announced every single second. */}
           {timeLimit > 0 && (
             <div
-              className={`flex items-center gap-1.5 ${timerClass}`}
+              className={`timer-pill ${timerClass}`}
               style={{ color: timerColor }}
               role="timer"
               aria-live="off"
