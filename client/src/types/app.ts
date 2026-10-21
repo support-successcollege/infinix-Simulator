@@ -11,6 +11,18 @@ export type TrainingMode = "full" | "quick" | "mistakes";
 
 export type UserRole = "trainee" | "manager";
 
+/**
+ * Practice-pool filters. An EMPTY array means "no constraint on that
+ * axis" — never "match nothing". Axes combine with AND, values inside
+ * one axis with OR.
+ */
+export interface QuestionFilters {
+  years: number[];
+  topics: string[];
+  qtypes: string[];
+  repeatedOnly: boolean;
+}
+
 export interface TrainingConfig {
   mode: TrainingMode;
   questionCount: number;
@@ -18,6 +30,7 @@ export interface TrainingConfig {
   timePerQuestion: number;
   arenaId: string | null;
   arenaName: string;
+  filters: QuestionFilters;
 }
 
 export interface Question {
@@ -29,6 +42,17 @@ export interface Question {
   coach?: string;
   arena: string;
   difficulty?: "easy" | "medium" | "hard";
+  /** Exam metadata — present only on banks that carry the taxonomy. */
+  year?: number;
+  /** Exam sitting, formatted "MM/YYYY". */
+  moed?: string;
+  topic?: string;
+  topicLabel?: string;
+  qtype?: string;
+  qtypeLabel?: string;
+  subtags?: string[];
+  /** How many sittings this question has appeared in. */
+  timesAsked?: number;
 }
 
 export interface Arena {
@@ -72,6 +96,13 @@ export interface User {
   weeklyGoal: number;
 }
 
+/** One recorded sitting in which a question appeared. */
+export interface QuestionAppearance {
+  exam?: string;
+  moed?: string;
+  number?: number;
+}
+
 export interface QuestionBankEntry {
   id?: string;
   question?: string;
@@ -81,6 +112,22 @@ export interface QuestionBankEntry {
   coachNote?: string;
   difficulty?: "easy" | "medium" | "hard" | string;
   status?: string;
+  // ── Exam taxonomy (added by the bank sync script) ─────────────
+  year?: number;
+  /** Exam sitting, formatted "MM/YYYY". */
+  moed?: string;
+  month?: number;
+  examLabel?: string;
+  topic?: string;
+  topicLabel?: string;
+  qtype?: string;
+  qtypeLabel?: string;
+  subtags?: string[];
+  /** Flat list: year + topicLabel + qtypeLabel + subtags. */
+  tags?: string[];
+  timesAsked?: number;
+  years?: number[];
+  appearances?: QuestionAppearance[];
 }
 
 export interface QuestionBankCategory {
@@ -91,7 +138,23 @@ export interface QuestionBankCategory {
   questions?: QuestionBankEntry[];
 }
 
+/** Id → Hebrew label maps that back the filter chips. */
+export interface QuestionBankTaxonomy {
+  topics?: Record<string, string>;
+  qtypes?: Record<string, string>;
+}
+
+export interface QuestionBankMeta {
+  version?: string;
+  language?: string;
+  format?: string;
+  note?: string;
+  questionsPerCategory?: Record<string, number>;
+  taxonomy?: QuestionBankTaxonomy;
+}
+
 export interface QuestionBankData {
+  meta?: QuestionBankMeta;
   categories?: Record<string, QuestionBankCategory>;
 }
 

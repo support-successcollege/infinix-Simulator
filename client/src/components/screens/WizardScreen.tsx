@@ -5,8 +5,9 @@
    ============================================================ */
 
 import { useState, useMemo } from "react";
-import { useApp, TrainingMode } from "@/contexts/AppContext";
-import { CheckCircle2, ChevronRight, ChevronLeft, Search, Play, X, FlaskConical, Hash } from "lucide-react";
+import { useApp, TrainingMode, QuestionFilters } from "@/contexts/AppContext";
+import { EMPTY_FILTERS, buildFacets, filterQuestions, toQuizQuestions, type Facet } from "@/lib/questionBank";
+import { CheckCircle2, ChevronRight, ChevronLeft, Search, Play, X, FlaskConical, Hash, SlidersHorizontal, Repeat2 } from "lucide-react";
 import { toast } from "sonner";
 
 const TRAINING_MODES: { id: TrainingMode; label: string; desc: string; icon: string }[] = [
@@ -25,7 +26,7 @@ const TIME_OPTIONS = [
 ];
 
 export default function WizardScreen() {
-  const { trainingConfig, setTrainingConfig, arenas, setScreen, startQuiz, isDemoContent } = useApp();
+  const { trainingConfig, setTrainingConfig, arenas, setScreen, startQuiz, isDemoContent, questionBankData } = useApp();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [arenaSearch, setArenaSearch] = useState("");
 
@@ -36,10 +37,44 @@ export default function WizardScreen() {
       a.summary.includes(arenaSearch)
     ), [arenas, arenaSearch]);
 
+  const filters = trainingConfig.filters ?? EMPTY_FILTERS;
+
+  // The practice pool of the arena the trainee actually picked. Demo
+  // content carries no exam taxonomy, so it stays out of the filters.
+  const arenaQuestions = useMemo(() => {
+    if (isDemoContent) return [];
+    const arenaName = arenas.find(a => a.id === trainingConfig.arenaId)?.name || trainingConfig.arenaName;
+    if (!arenaName) return [];
+    return toQuizQuestions(questionBankData?.categories?.[arenaName]?.questions, arenaName);
+  }, [arenas, isDemoContent, questionBankData, trainingConfig.arenaId, trainingConfig.arenaName]);
+
+  const facets = useMemo(() => buildFacets(arenaQuestions), [arenaQuestions]);
+  const matchCount = useMemo(
+    () => filterQuestions(arenaQuestions, filters).length,
+    [arenaQuestions, filters]
+  );
+
+  const hasFilters =
+    filters.years.length > 0 ||
+    filters.topics.length > 0 ||
+    filters.qtypes.length > 0 ||
+    filters.repeatedOnly;
+  // Only a real pool can be emptied by a filter; demo runs are never blocked.
+  const noMatches = arenaQuestions.length > 0 && matchCount === 0;
+
+  const setFilters = (patch: Partial<QuestionFilters>) =>
+    setTrainingConfig({ filters: { ...filters, ...patch } });
+
+  const clearFilters = () => setTrainingConfig({ filters: EMPTY_FILTERS });
+
   const canProceedToArena = !!trainingConfig.mode;
   const canProceedToConfirm = !!trainingConfig.arenaId;
 
   const handleStart = () => {
+    if (noMatches) {
+      toast.error("אין שאלות שמתאימות לסינון שבחרת");
+      return;
+    }
     const result = startQuiz();
     if (!result.ok) toast.error(result.error || "לא ניתן להתחיל את האימון");
   };
@@ -107,7 +142,19 @@ export default function WizardScreen() {
           />
         )}
         {step === 3 && (
-          <Step3Confirm config={trainingConfig} arenas={arenas} isDemoContent={isDemoContent} />
+          <Step3Confirm
+            config={trainingConfig}
+            arenas={arenas}
+            isDemoContent={isDemoContent}
+            filters={filters}
+            setFilters={setFilters}
+            clearFilters={clearFilters}
+            facets={facets}
+            totalCount={arenaQuestions.length}
+            matchCount={matchCount}
+            hasFilters={hasFilters}
+            noMatches={noMatches}
+          />
         )}
       </div>
 
@@ -166,6 +213,8 @@ export default function WizardScreen() {
             ) : (
               <button
                 onClick={handleStart}
+                disabled={noMatches}
+                title={noMatches ? "אין שאלות שמתאימות לסינון שבחרת" : undefined}
                 className="btn-primary text-base"
               >
                 <Play size={18} />
@@ -401,19 +450,83 @@ function Step2Arena({ arenas, allArenas, selectedId, search, setSearch, onSelect
 
 // ── Step 3: Confirm ───────────────────────────────────────────
 
-function Step3Confirm({ config, arenas, isDemoContent }: {
+function FilterChips({ title, options, selected, onToggle }: {
+  title: string;
+  options: Facet[];
+  selected: string[];
+  onToggle: (value: string) => void;
+}) {
+  if (options.length === 0) return null;
+  return (
+    <div>
+      <div className="text-xs font-bold mb-2" style={{ color: "var(--muted-foreground)" }}>{title}</div>
+      <div className="flex gap-2 flex-wrap">
+        {options.map(opt => {
+          const isOn = selected.includes(opt.value);
+          return (
+            <button
+              key={opt.value}
+              onClick={() => onToggle(opt.value)}
+              aria-pressed={isOn}
+              className="px-3 py-1.5 rounded-xl font-bold text-xs transition-all"
+              style={{
+                background: isOn ? "var(--primary)" : "var(--tf-surface)",
+                color: isOn ? "var(--primary-foreground)" : "var(--foreground)",
+                border: isOn ? "1px solid transparent" : "1px solid var(--tf-border)",
+                boxShadow: isOn ? "0 0 12px rgba(255, 165, 0, 0.3)" : "none",
+              }}
+            >
+              {opt.label}
+              <span className="mr-1.5 opacity-70" style={{ fontFamily: "Inter, sans-serif" }}>
+                {opt.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Step3Confirm({
+  config,
+  arenas,
+  isDemoContent,
+  filters,
+  setFilters,
+  clearFilters,
+  facets,
+  totalCount,
+  matchCount,
+  hasFilters,
+  noMatches,
+}: {
   config: ReturnType<typeof useApp>["trainingConfig"];
   arenas: ReturnType<typeof useApp>["arenas"];
   isDemoContent: boolean;
+  filters: QuestionFilters;
+  setFilters: (patch: Partial<QuestionFilters>) => void;
+  clearFilters: () => void;
+  facets: ReturnType<typeof buildFacets>;
+  totalCount: number;
+  matchCount: number;
+  hasFilters: boolean;
+  noMatches: boolean;
 }) {
   const arena = arenas.find(a => a.id === config.arenaId);
   const modeLabel = TRAINING_MODES.find(m => m.id === config.mode)?.label ?? config.mode;
   const timeLabel = TIME_OPTIONS.find(t => t.value === config.timePerQuestion)?.label ?? `${config.timePerQuestion}שנ'`;
 
+  const hasFacets =
+    facets.years.length > 0 || facets.topics.length > 0 || facets.qtypes.length > 0;
+
+  const toggle = <T extends number | string>(list: T[], value: T): T[] =>
+    list.includes(value) ? list.filter(v => v !== value) : [...list, value];
+
   // Questions are never repeated to pad a short pool, so a request for
   // more than the arena holds simply yields a shorter quiz. Say so up
   // front rather than surprising the trainee mid-session.
-  const available = arena?.questionCount ?? 0;
+  const available = totalCount > 0 ? matchCount : arena?.questionCount ?? 0;
   const actualCount = available > 0 ? Math.min(config.questionCount, available) : config.questionCount;
   const isTrimmed = available > 0 && config.questionCount > available;
 
@@ -435,7 +548,12 @@ function Step3Confirm({ config, arenas, isDemoContent }: {
           { label: "כמות שאלות", value: `${actualCount}` },
           { label: "זמן לשאלה", value: timeLabel },
           { label: "זירה", value: arena?.name ?? config.arenaName },
-          { label: "שאלות במאגר", value: `${available || "—"}` },
+          {
+            label: hasFilters ? "שאלות אחרי סינון" : "שאלות במאגר",
+            value: hasFilters && totalCount > 0
+              ? `${matchCount} מתוך ${totalCount}`
+              : `${available || "—"}`,
+          },
         ].map(row => (
           <div key={row.label} className="data-row">
             <span className="data-row-label">{row.label}</span>
@@ -443,6 +561,90 @@ function Step3Confirm({ config, arenas, isDemoContent }: {
           </div>
         ))}
       </div>
+
+      {/* Practice-pool filters */}
+      {hasFacets && (
+        <div className="rounded-2xl p-4 flex flex-col gap-4" style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)" }}>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm font-bold" style={{ color: "var(--foreground)" }}>
+              <SlidersHorizontal size={14} className="inline ml-1" style={{ color: "var(--primary)" }} />
+              סינון מאגר השאלות
+            </h3>
+            {hasFilters && (
+              <button
+                onClick={clearFilters}
+                className="text-xs font-bold underline"
+                style={{ color: "var(--primary)", textUnderlineOffset: "3px" }}
+              >
+                נקה סינון
+              </button>
+            )}
+          </div>
+
+          <FilterChips
+            title="מועד בחינה"
+            options={facets.years}
+            selected={filters.years.map(String)}
+            onToggle={value => setFilters({ years: toggle(filters.years, Number(value)) })}
+          />
+          <FilterChips
+            title="נושא"
+            options={facets.topics}
+            selected={filters.topics}
+            onToggle={value => setFilters({ topics: toggle(filters.topics, value) })}
+          />
+          <FilterChips
+            title="סוג שאלה"
+            options={facets.qtypes}
+            selected={filters.qtypes}
+            onToggle={value => setFilters({ qtypes: toggle(filters.qtypes, value) })}
+          />
+
+          <button
+            role="switch"
+            aria-checked={filters.repeatedOnly}
+            onClick={() => setFilters({ repeatedOnly: !filters.repeatedOnly })}
+            className="flex items-center gap-3 p-3 rounded-xl text-right transition-all"
+            style={{
+              background: filters.repeatedOnly ? "rgba(255, 165, 0, 0.15)" : "var(--tf-surface-soft)",
+              border: filters.repeatedOnly ? "1px solid rgba(255, 165, 0, 0.5)" : "1px solid var(--tf-border)",
+            }}
+          >
+            <Repeat2 size={18} style={{ color: filters.repeatedOnly ? "var(--primary)" : "var(--muted-foreground)", flexShrink: 0 }} aria-hidden="true" />
+            <div className="flex-1">
+              <div className="font-bold text-sm" style={{ color: "var(--foreground)" }}>
+                שאלות שחזרו ביותר ממועד אחד
+              </div>
+              <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+                {facets.repeated} שאלות במאגר הזירה
+              </div>
+            </div>
+            <span
+              className="flex items-center rounded-full transition-all"
+              style={{
+                width: 40,
+                height: 22,
+                padding: 3,
+                flexShrink: 0,
+                background: filters.repeatedOnly ? "var(--primary)" : "var(--muted)",
+                justifyContent: filters.repeatedOnly ? "flex-start" : "flex-end",
+              }}
+            >
+              <span className="rounded-full" style={{ width: 16, height: 16, background: "var(--background)" }} />
+            </span>
+          </button>
+
+          <div
+            className="text-xs font-bold pt-1"
+            style={{ color: noMatches ? "var(--destructive)" : "var(--muted-foreground)" }}
+            role="status"
+          >
+            {noMatches
+              ? "אין שאלות שמתאימות לסינון שבחרת — שנה או נקה את הסינון כדי להתחיל."
+              : `${matchCount} שאלות מתאימות לסינון הנוכחי, מתוך ${totalCount} בזירה.`}
+          </div>
+        </div>
+      )}
 
       {isDemoContent && (
         <div
@@ -465,8 +667,9 @@ function Step3Confirm({ config, arenas, isDemoContent }: {
         >
           <Hash size={16} style={{ color: "var(--foreground)", flexShrink: 0, marginTop: 3 }} aria-hidden="true" />
           <p className="text-sm" style={{ color: "var(--foreground)" }}>
-            בזירה הזו יש {available} שאלות בלבד, ולכן האימון יכלול {actualCount} שאלות ולא{" "}
-            {config.questionCount}. שאלות לא חוזרות על עצמן באותו מבחן.
+            {hasFilters ? "לסינון שבחרת מתאימות" : "בזירה הזו יש"} {available} שאלות בלבד, ולכן
+            האימון יכלול {actualCount} שאלות ולא {config.questionCount}. שאלות לא חוזרות על עצמן
+            באותו מבחן.
           </p>
         </div>
       )}

@@ -11,6 +11,7 @@ import type {
   QuestionBankCategory,
   QuestionBankData,
   QuestionBankEntry,
+  QuestionFilters,
 } from "@/types/app";
 
 /** Answer keys used by Hebrew exam exports, in their natural order. */
@@ -175,6 +176,8 @@ export function toQuizQuestions(
     .map((q, idx) => {
       const options = (q.options || []).map(o => String(o));
       const correct = Number(q.correctIndex);
+      const year = Number(q.year);
+      const timesAsked = Number(q.timesAsked);
       return {
         id: q.id || `${arenaName}-${idx + 1}`,
         text: String(q.question || ""),
@@ -185,8 +188,116 @@ export function toQuizQuestions(
         coach: q.coachNote ? String(q.coachNote) : undefined,
         arena: arenaName,
         difficulty: normalizeDifficulty(q.difficulty),
+        // Exam taxonomy — absent on older banks, so every field stays optional.
+        year: Number.isFinite(year) && q.year != null ? year : undefined,
+        moed: q.moed ? String(q.moed) : undefined,
+        topic: q.topic ? String(q.topic) : undefined,
+        topicLabel: q.topicLabel ? String(q.topicLabel) : undefined,
+        qtype: q.qtype ? String(q.qtype) : undefined,
+        qtypeLabel: q.qtypeLabel ? String(q.qtypeLabel) : undefined,
+        subtags: Array.isArray(q.subtags) ? q.subtags.map(t => String(t)) : undefined,
+        timesAsked: Number.isFinite(timesAsked) && q.timesAsked != null ? timesAsked : undefined,
       } satisfies Question;
     });
+}
+
+// ── Practice-pool filtering ───────────────────────────────────
+
+export const EMPTY_FILTERS: QuestionFilters = {
+  years: [],
+  topics: [],
+  qtypes: [],
+  repeatedOnly: false,
+};
+
+/**
+ * Narrow a pool by exam year, topic and question type.
+ *
+ * An EMPTY array on an axis means "no constraint on that axis" — a
+ * trainee who has picked no year should still see every year. Axes
+ * combine with AND, values inside one axis with OR. A question that
+ * lacks the field an axis filters on cannot satisfy that axis, so it
+ * drops out once the axis is constrained.
+ */
+export function filterQuestions(questions: Question[], filters?: QuestionFilters): Question[] {
+  if (!Array.isArray(questions)) return [];
+  if (!filters) return questions;
+
+  const years = Array.isArray(filters.years) ? filters.years : [];
+  const topics = Array.isArray(filters.topics) ? filters.topics : [];
+  const qtypes = Array.isArray(filters.qtypes) ? filters.qtypes : [];
+  const repeatedOnly = !!filters.repeatedOnly;
+
+  if (years.length === 0 && topics.length === 0 && qtypes.length === 0 && !repeatedOnly) {
+    return questions;
+  }
+
+  return questions.filter(q => {
+    if (years.length > 0 && (q.year == null || !years.includes(q.year))) return false;
+    if (topics.length > 0 && (!q.topic || !topics.includes(q.topic))) return false;
+    if (qtypes.length > 0 && (!q.qtype || !qtypes.includes(q.qtype))) return false;
+    // An unlabelled question is assumed to have been asked once.
+    if (repeatedOnly && (q.timesAsked ?? 1) <= 1) return false;
+    return true;
+  });
+}
+
+/** One selectable filter value plus how many questions carry it. */
+export interface Facet {
+  value: string;
+  label: string;
+  count: number;
+}
+
+function tally(
+  questions: Question[],
+  pick: (q: Question) => { value: string; label: string } | null
+): Facet[] {
+  const byValue = new Map<string, Facet>();
+  questions.forEach(q => {
+    const hit = pick(q);
+    if (!hit) return;
+    const existing = byValue.get(hit.value);
+    if (existing) existing.count += 1;
+    else byValue.set(hit.value, { value: hit.value, label: hit.label, count: 1 });
+  });
+  return Array.from(byValue.values());
+}
+
+/**
+ * Options for the filter UI, counted over the questions passed in.
+ * Years run newest first; topics and question types run by volume so
+ * the heaviest chunks of the syllabus surface first.
+ */
+export function buildFacets(questions: Question[]): {
+  years: Facet[];
+  topics: Facet[];
+  qtypes: Facet[];
+  repeated: number;
+} {
+  const list = Array.isArray(questions) ? questions : [];
+
+  const years = tally(list, q =>
+    q.year == null ? null : { value: String(q.year), label: String(q.year) }
+  ).sort((a, b) => Number(b.value) - Number(a.value));
+
+  const byCount = (a: Facet, b: Facet) =>
+    b.count - a.count || a.label.localeCompare(b.label, "he");
+
+  const topics = tally(list, q =>
+    q.topic ? { value: q.topic, label: q.topicLabel || q.topic } : null
+  ).sort(byCount);
+
+  const qtypes = tally(list, q =>
+    q.qtype ? { value: q.qtype, label: q.qtypeLabel || q.qtype } : null
+  ).sort(byCount);
+
+  return {
+    years,
+    topics,
+    qtypes,
+    repeated: list.filter(q => (q.timesAsked ?? 1) > 1).length,
+  };
 }
 
 /** Derive the arena list shown in the wizard from a loaded bank. */

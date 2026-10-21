@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  EMPTY_FILTERS,
   buildArenaSummary,
   buildArenas,
+  buildFacets,
   calculateScore,
+  filterQuestions,
   normalizeDifficulty,
   parseAnyQuestionBank,
   parseLegacyMergedExamSchema,
@@ -12,7 +15,7 @@ import {
   shuffle,
   toQuizQuestions,
 } from "./questionBank";
-import type { QuestionBankData } from "@/types/app";
+import type { Question, QuestionBankData, QuestionFilters } from "@/types/app";
 
 describe("normalizeDifficulty", () => {
   it("maps English labels", () => {
@@ -189,6 +192,184 @@ describe("toQuizQuestions", () => {
 
   it("handles undefined input", () => {
     expect(toQuizQuestions(undefined, "זירה")).toEqual([]);
+  });
+
+  it("carries the exam taxonomy onto the runtime question", () => {
+    const [q] = toQuizQuestions(
+      [
+        {
+          id: "a",
+          question: "ש",
+          options: ["1", "2"],
+          correctIndex: 1,
+          year: 2024,
+          moed: "05/2024",
+          topic: "mutual_funds",
+          topicLabel: "קרנות נאמנות",
+          qtype: "case",
+          qtypeLabel: "קייס",
+          subtags: ["דמי ניהול"],
+          timesAsked: 3,
+        },
+      ],
+      "זירה"
+    );
+    expect(q.year).toBe(2024);
+    expect(q.moed).toBe("05/2024");
+    expect(q.topic).toBe("mutual_funds");
+    expect(q.topicLabel).toBe("קרנות נאמנות");
+    expect(q.qtype).toBe("case");
+    expect(q.qtypeLabel).toBe("קייס");
+    expect(q.subtags).toEqual(["דמי ניהול"]);
+    expect(q.timesAsked).toBe(3);
+  });
+
+  it("leaves taxonomy fields undefined on a bank that predates them", () => {
+    const [q] = toQuizQuestions([{ id: "a", question: "ש", options: ["1", "2"] }], "זירה");
+    expect(q.year).toBeUndefined();
+    expect(q.topic).toBeUndefined();
+    expect(q.qtype).toBeUndefined();
+    expect(q.timesAsked).toBeUndefined();
+  });
+});
+
+// ── Filtering ────────────────────────────────────────────────
+
+function makeQuestion(over: Partial<Question> & { id: string }): Question {
+  return {
+    text: "שאלה",
+    options: ["א", "ב"],
+    correctIndex: 0,
+    explanation: "",
+    arena: "אתיקה",
+    ...over,
+  };
+}
+
+const FILTER_POOL: Question[] = [
+  makeQuestion({ id: "a", year: 2024, topic: "kyc", qtype: "case", timesAsked: 3 }),
+  makeQuestion({ id: "b", year: 2024, topic: "aml", qtype: "knowledge", timesAsked: 1 }),
+  makeQuestion({ id: "c", year: 2023, topic: "kyc", qtype: "knowledge", timesAsked: 2 }),
+  makeQuestion({ id: "d", year: 2022, topic: "aml", qtype: "case" }),
+  // Predates the taxonomy: no year, no topic, no qtype.
+  makeQuestion({ id: "e" }),
+];
+
+const withFilters = (patch: Partial<QuestionFilters>): QuestionFilters => ({
+  ...EMPTY_FILTERS,
+  ...patch,
+});
+
+describe("filterQuestions", () => {
+  it("treats empty arrays as unconstrained, not as 'match nothing'", () => {
+    expect(filterQuestions(FILTER_POOL, EMPTY_FILTERS)).toEqual(FILTER_POOL);
+    expect(filterQuestions(FILTER_POOL, undefined)).toEqual(FILTER_POOL);
+  });
+
+  it("leaves the other axes unconstrained when one axis is set", () => {
+    const result = filterQuestions(FILTER_POOL, withFilters({ topics: ["kyc"] }));
+    // Both years and both question types survive — only topic narrowed.
+    expect(result.map(q => q.id)).toEqual(["a", "c"]);
+  });
+
+  it("combines values inside one axis with OR", () => {
+    const result = filterQuestions(FILTER_POOL, withFilters({ years: [2024, 2022] }));
+    expect(result.map(q => q.id)).toEqual(["a", "b", "d"]);
+  });
+
+  it("combines two axes with AND", () => {
+    const result = filterQuestions(
+      FILTER_POOL,
+      withFilters({ years: [2024, 2023], topics: ["kyc"] })
+    );
+    expect(result.map(q => q.id)).toEqual(["a", "c"]);
+
+    const narrower = filterQuestions(
+      FILTER_POOL,
+      withFilters({ years: [2024], topics: ["kyc"], qtypes: ["knowledge"] })
+    );
+    expect(narrower).toEqual([]);
+  });
+
+  it("filters by question type", () => {
+    const result = filterQuestions(FILTER_POOL, withFilters({ qtypes: ["case"] }));
+    expect(result.map(q => q.id)).toEqual(["a", "d"]);
+  });
+
+  it("keeps only questions asked in more than one sitting when repeatedOnly is on", () => {
+    const result = filterQuestions(FILTER_POOL, withFilters({ repeatedOnly: true }));
+    expect(result.map(q => q.id)).toEqual(["a", "c"]);
+  });
+
+  it("combines repeatedOnly with the other axes", () => {
+    const result = filterQuestions(
+      FILTER_POOL,
+      withFilters({ repeatedOnly: true, qtypes: ["knowledge"] })
+    );
+    expect(result.map(q => q.id)).toEqual(["c"]);
+  });
+
+  it("excludes questions missing the field an axis filters on", () => {
+    expect(filterQuestions(FILTER_POOL, withFilters({ years: [2024] })).map(q => q.id)).not.toContain(
+      "e"
+    );
+    expect(filterQuestions(FILTER_POOL, withFilters({ topics: ["kyc"] })).map(q => q.id)).not.toContain(
+      "e"
+    );
+    expect(filterQuestions(FILTER_POOL, withFilters({ qtypes: ["case"] })).map(q => q.id)).not.toContain(
+      "e"
+    );
+    // Unconstrained axes still let it through.
+    expect(filterQuestions(FILTER_POOL, EMPTY_FILTERS).map(q => q.id)).toContain("e");
+  });
+
+  it("returns an empty list for an empty pool", () => {
+    expect(filterQuestions([], withFilters({ years: [2024] }))).toEqual([]);
+  });
+});
+
+describe("buildFacets", () => {
+  const facets = buildFacets(FILTER_POOL);
+
+  it("counts each value over the questions passed in", () => {
+    expect(facets.years).toEqual([
+      { value: "2024", label: "2024", count: 2 },
+      { value: "2023", label: "2023", count: 1 },
+      { value: "2022", label: "2022", count: 1 },
+    ]);
+    expect(facets.topics.find(f => f.value === "kyc")!.count).toBe(2);
+    expect(facets.qtypes.find(f => f.value === "case")!.count).toBe(2);
+  });
+
+  it("orders years newest first", () => {
+    expect(facets.years.map(f => f.value)).toEqual(["2024", "2023", "2022"]);
+  });
+
+  it("orders topics and question types by count, descending", () => {
+    const byTopic = buildFacets([
+      ...FILTER_POOL,
+      makeQuestion({ id: "f", topic: "aml", qtype: "knowledge" }),
+      makeQuestion({ id: "g", topic: "aml", qtype: "knowledge" }),
+    ]);
+    expect(byTopic.topics.map(f => f.value)).toEqual(["aml", "kyc"]);
+    expect(byTopic.qtypes.map(f => f.value)).toEqual(["knowledge", "case"]);
+  });
+
+  it("uses the Hebrew label when the bank supplies one", () => {
+    const labelled = buildFacets([
+      makeQuestion({ id: "a", topic: "mutual_funds", topicLabel: "קרנות נאמנות", qtype: "case", qtypeLabel: "קייס" }),
+    ]);
+    expect(labelled.topics[0].label).toBe("קרנות נאמנות");
+    expect(labelled.qtypes[0].label).toBe("קייס");
+  });
+
+  it("skips questions that carry no taxonomy at all", () => {
+    const empty = buildFacets([makeQuestion({ id: "e" })]);
+    expect(empty).toEqual({ years: [], topics: [], qtypes: [], repeated: 0 });
+  });
+
+  it("counts questions asked in more than one sitting", () => {
+    expect(facets.repeated).toBe(2);
   });
 });
 
