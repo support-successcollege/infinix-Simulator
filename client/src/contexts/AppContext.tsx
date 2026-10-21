@@ -26,8 +26,10 @@ import {
 } from "@/lib/auth";
 import { DEMO_ARENAS, getDemoQuestions } from "@/lib/demoContent";
 import {
+  EMPTY_FILTERS,
   buildArenas,
   calculateScore,
+  filterQuestions,
   parseAnyQuestionBank,
   pickQuestions,
   toQuizQuestions,
@@ -39,6 +41,7 @@ import type {
   PublicAuthUser,
   Question,
   QuestionBankData,
+  QuestionFilters,
   QuizAnswer,
   QuizSession,
   Screen,
@@ -53,6 +56,7 @@ export type {
   QuestionBankCategory,
   QuestionBankData,
   QuestionBankEntry,
+  QuestionFilters,
   QuizAnswer,
   QuizSession,
   Screen,
@@ -141,6 +145,7 @@ const DEFAULT_TRAINING_CONFIG: TrainingConfig = {
   timePerQuestion: 60,
   arenaId: null,
   arenaName: "",
+  filters: EMPTY_FILTERS,
 };
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -155,6 +160,32 @@ function startOfWeek(now = new Date()): Date {
 
 function sanitizeRole(role: unknown): UserRole {
   return role === "manager" ? "manager" : "trainee";
+}
+
+/**
+ * Rehydrate the stored training config. Configs written before the
+ * practice filters shipped have no `filters` key at all — and a
+ * half-written one could hold anything — so every axis is rebuilt
+ * from scratch rather than trusted.
+ */
+function reviveTrainingConfig(raw: unknown): TrainingConfig {
+  const stored = (raw && typeof raw === "object" ? raw : {}) as Partial<TrainingConfig>;
+  const storedFilters = (
+    stored.filters && typeof stored.filters === "object" ? stored.filters : {}
+  ) as Partial<QuestionFilters>;
+
+  return {
+    ...DEFAULT_TRAINING_CONFIG,
+    ...stored,
+    filters: {
+      years: Array.isArray(storedFilters.years)
+        ? storedFilters.years.map(Number).filter(Number.isFinite)
+        : [],
+      topics: Array.isArray(storedFilters.topics) ? storedFilters.topics.map(String) : [],
+      qtypes: Array.isArray(storedFilters.qtypes) ? storedFilters.qtypes.map(String) : [],
+      repeatedOnly: !!storedFilters.repeatedOnly,
+    },
+  };
 }
 
 /**
@@ -282,10 +313,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     readJson<string>(STORAGE_KEYS.adminToken, "")
   );
 
-  const [trainingConfig, setTrainingConfigState] = useState<TrainingConfig>(() => ({
-    ...DEFAULT_TRAINING_CONFIG,
-    ...readJson<Partial<TrainingConfig>>(STORAGE_KEYS.trainingConfig, {}),
-  }));
+  const [trainingConfig, setTrainingConfigState] = useState<TrainingConfig>(() =>
+    reviveTrainingConfig(readJson<unknown>(STORAGE_KEYS.trainingConfig, {}))
+  );
 
   const [currentSession, setCurrentSession] = useState<QuizSession | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -863,6 +893,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const usingDemo = bankQuestions.length === 0;
     let pool: Question[] = usingDemo ? getDemoQuestions(arenaName) : bankQuestions;
+
+    // Demo questions carry no exam taxonomy, so filtering them would
+    // always wipe the pool out. They stay exempt.
+    if (!usingDemo) {
+      pool = filterQuestions(pool, trainingConfig.filters);
+      if (pool.length === 0) {
+        return { ok: false, error: "אין שאלות שמתאימות לסינון שבחרת" };
+      }
+    }
 
     if (trainingConfig.mode === "mistakes") {
       const wrongIds = new Set<string>();
