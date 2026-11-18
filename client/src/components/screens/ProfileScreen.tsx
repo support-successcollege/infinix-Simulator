@@ -56,7 +56,7 @@ export default function ProfileScreen() {
             className="w-14 h-14 flex items-center justify-center flex-shrink-0 rounded-full"
             style={{
               background: "var(--accent-bright)",
-              color: "#14213d",
+              color: "#140e02",
               fontFamily: "var(--font-display)",
               fontSize: "1.5rem",
               fontWeight: 700,

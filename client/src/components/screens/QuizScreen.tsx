@@ -176,7 +176,7 @@ export default function QuizScreen() {
         </div>
 
         {/* The question is set as a headline, not boxed in a card. */}
-        <h2 className="t-title" style={{ color: "var(--foreground)" }}>
+        <h2 className="t-title quiz-stem" style={{ color: "var(--foreground)" }}>
           {currentQuestion.text}
         </h2>
 

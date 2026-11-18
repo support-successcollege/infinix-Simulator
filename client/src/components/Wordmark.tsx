@@ -1,49 +1,36 @@
 /* ============================================================
-   Wordmark — the INFINIX mark, set rather than drawn.
+   Wordmark — the INFINIX logo, as the brand ships it.
 
-   The supplied artwork is a white-on-transparent raster with an
-   amber X. On the ink panel of the sign-in screen it sits fine,
-   but everywhere else it needed a black plate painted behind it
-   just to stay visible — a patch stuck onto the page, at a fixed
-   resolution, in a colour the palette no longer uses.
-
-   Setting the mark in the app's own type solves all three at
-   once: it inherits the current ink, it is crisp at any size, and
-   the X picks up the single accent the rest of the system uses.
+   Two cuts of the same artwork: black lettering for light ground,
+   white lettering for dark ground (the sidebar, the mastheads, and
+   every surface in dark mode). The X is the brand orange in both.
    ============================================================ */
 
+import logoBlack from "@/assets/infinix-logo-black.png";
+import logoWhite from "@/assets/infinix-logo-white.png";
+
 interface WordmarkProps {
-  /** Rendered height of the mark, in rem-ish CSS units. */
   size?: "sm" | "md" | "lg";
-  /** Force a specific ink — used on the sign-in plate, which is
-      always dark regardless of the active theme. */
+  /** "onDark" always uses the white cut; "auto" follows the theme. */
   tone?: "auto" | "onDark";
   className?: string;
 }
 
-const SIZES: Record<NonNullable<WordmarkProps["size"]>, string> = {
-  sm: "0.75rem",
-  md: "1.0625rem",
-  lg: "1.5rem",
+const HEIGHTS: Record<NonNullable<WordmarkProps["size"]>, number> = {
+  sm: 11,
+  md: 22,
+  lg: 34,
 };
 
 export default function Wordmark({ size = "md", tone = "auto", className = "" }: WordmarkProps) {
-  const onDark = tone === "onDark";
+  const height = HEIGHTS[size];
+  if (tone === "onDark") {
+    return <img src={logoWhite} alt="INFINIX" className={`wordmark-img ${className}`} style={{ height }} />;
+  }
   return (
-    <span
-      className={`wordmark ${className}`}
-      style={{
-        fontSize: SIZES[size],
-        color: onDark ? "#fbfaf6" : "var(--foreground)",
-      }}
-      role="img"
-      aria-label="INFINIX"
-    >
-      {/* The split follows the artwork, where the stroke before the X
-          is the second I and is coloured with it. Spelling it "INFIN"
-          + "X" would drop a letter — the mark is INFIN-IX. */}
-      <span aria-hidden="true">INFIN</span>
-      <span aria-hidden="true" style={{ color: onDark ? "#e2b555" : "var(--accent-bright)" }}>IX</span>
+    <span className={`wordmark-auto ${className}`} role="img" aria-label="INFINIX">
+      <img src={logoBlack} alt="" aria-hidden="true" className="wordmark-img wordmark-on-light" style={{ height }} />
+      <img src={logoWhite} alt="" aria-hidden="true" className="wordmark-img wordmark-on-dark" style={{ height }} />
     </span>
   );
 }

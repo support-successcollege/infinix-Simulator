@@ -574,7 +574,7 @@ function Step3Confirm({
               <button
                 onClick={clearFilters}
                 className="text-xs font-bold underline"
-                style={{ color: "var(--primary)", textUnderlineOffset: "3px" }}
+                style={{ color: "var(--accent)", textUnderlineOffset: "3px" }}
               >
                 נקה סינון
               </button>
