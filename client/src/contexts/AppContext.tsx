@@ -29,6 +29,7 @@ import {
   buildArenas,
   calculateScore,
   filterQuestions,
+  mergeBanks,
   parseAnyQuestionBank,
   pickQuestions,
   toQuizQuestions,
@@ -134,6 +135,9 @@ const TIMING_SALT = "00000000000000000000000000000000";
  * publish flow can be exercised without deploying.
  */
 const SHARED_BANK_ENDPOINT = "/api/question-bank";
+
+/** Static banks in client/public, merged under the active bank for trainees. */
+const ADD_ON_BANK_FILES = ["question_bank_insurance.json"];
 
 /** Which of the layered sources produced the bank currently in use. */
 export type BankSource = "shared" | "local" | "bundled" | "none";
@@ -252,7 +256,10 @@ interface AppContextValue {
   questionBankLoaded: boolean;
   /** True when the arenas and questions on screen are placeholders. */
   isDemoContent: boolean;
+  /** The bank the manager edits and publishes (shared, local or bundled). */
   questionBankData: QuestionBankData | null;
+  /** What trainees practise from: the bank above plus the shipped add-on banks. */
+  practiceBankData: QuestionBankData | null;
   importQuestionBank: (file: File) => Promise<void>;
   importQuestionBankCategories: (file: File) => Promise<void>;
   clearImportedQuestionBank: () => void;
@@ -509,6 +516,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   }, [fetchSharedBank, fetchBundledBank]);
 
+  /**
+   * Add-on banks ship as their own static files and are always laid
+   * under whichever bank is active. They stay out of the shared bank on
+   * purpose: the publish endpoint caps a bank at 4MB, and the insurance
+   * past exams alone are larger than that.
+   */
+  const [addOnBanks, setAddOnBanks] = useState<QuestionBankData[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const baseUrl = import.meta.env.BASE_URL || "/";
+    const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+    (async () => {
+      const loaded: QuestionBankData[] = [];
+      for (const file of ADD_ON_BANK_FILES) {
+        try {
+          const res = await fetch(`${normalizedBase}${file}`);
+          if (!res.ok) continue;
+          const parsed = parseAnyQuestionBank(await res.json());
+          if (parsed) loaded.push(parsed);
+        } catch {
+          // A missing add-on just means fewer topics.
+        }
+      }
+      if (!cancelled) setAddOnBanks(loaded);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const practiceBank = useMemo(
+    () => mergeBanks(questionBank, ...addOnBanks),
+    [questionBank, addOnBanks]
+  );
+
   const refreshQuestionBank = useCallback(async () => {
     const { bank, source, sharedExists } = await loadQuestionBank();
     setQuestionBank(bank);
@@ -534,7 +577,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // ── Derived content ──────────────────────────────────────────
 
-  const realArenas = useMemo(() => buildArenas(questionBank), [questionBank]);
+  const realArenas = useMemo(() => buildArenas(practiceBank), [practiceBank]);
 
   // No usable questions at all: there is no placeholder content to
   // fall back on, so the UI shows a "load a question bank" notice and
@@ -888,7 +931,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const bankQuestions = isDemoContent
       ? []
-      : toQuizQuestions(questionBank?.categories?.[arenaName]?.questions, arenaName);
+      : toQuizQuestions(practiceBank?.categories?.[arenaName]?.questions, arenaName);
 
     if (bankQuestions.length === 0) {
       return { ok: false, error: "לא נמצאו שאלות זמינות בנושא הזה" };
@@ -929,7 +972,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setIsShowingFeedback(false);
     setCurrentScreen("quiz");
     return { ok: true };
-  }, [arenas, isDemoContent, questionBank, sessions, trainingConfig]);
+  }, [arenas, isDemoContent, practiceBank, sessions, trainingConfig]);
 
   // Guards double submission when the timer fires at the same moment
   // the trainee clicks an answer.
@@ -1018,9 +1061,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       trainingConfig,
       setTrainingConfig,
       arenas,
-      questionBankLoaded: !!questionBank && !isDemoContent,
+      questionBankLoaded: !!practiceBank && !isDemoContent,
       isDemoContent,
       questionBankData: questionBank,
+      practiceBankData: practiceBank,
       importQuestionBank,
       importQuestionBankCategories,
       clearImportedQuestionBank,
@@ -1065,6 +1109,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setTrainingConfig,
       arenas,
       questionBank,
+      practiceBank,
       isDemoContent,
       importQuestionBank,
       importQuestionBankCategories,

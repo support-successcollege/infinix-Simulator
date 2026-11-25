@@ -26,7 +26,7 @@ const TIME_OPTIONS = [
 ];
 
 export default function WizardScreen() {
-  const { trainingConfig, setTrainingConfig, arenas, setScreen, startQuiz, isDemoContent, questionBankData } = useApp();
+  const { trainingConfig, setTrainingConfig, arenas, setScreen, startQuiz, isDemoContent, practiceBankData } = useApp();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [arenaSearch, setArenaSearch] = useState("");
 
@@ -45,8 +45,8 @@ export default function WizardScreen() {
     if (isDemoContent) return [];
     const arenaName = arenas.find(a => a.id === trainingConfig.arenaId)?.name || trainingConfig.arenaName;
     if (!arenaName) return [];
-    return toQuizQuestions(questionBankData?.categories?.[arenaName]?.questions, arenaName);
-  }, [arenas, isDemoContent, questionBankData, trainingConfig.arenaId, trainingConfig.arenaName]);
+    return toQuizQuestions(practiceBankData?.categories?.[arenaName]?.questions, arenaName);
+  }, [arenas, isDemoContent, practiceBankData, trainingConfig.arenaId, trainingConfig.arenaName]);
 
   const facets = useMemo(() => buildFacets(arenaQuestions), [arenaQuestions]);
   const matchCount = useMemo(
