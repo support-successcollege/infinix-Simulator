@@ -11,6 +11,8 @@
 export const STORAGE_KEYS = {
   /** A bank imported into this browser only — a local override. */
   questionBank: "ic_question_bank_v1",
+  /** The same local override, gzipped and base64-encoded (large banks). */
+  questionBankGz: "ic_question_bank_gz_v1",
   /**
    * The manager's publish token. This is a convenience so it isn't
    * retyped on every upload; it is not a credential the app checks.

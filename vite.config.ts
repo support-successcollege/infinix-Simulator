@@ -2,6 +2,7 @@ import { jsxLocPlugin } from "@builder.io/vite-plugin-jsx-loc";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import fs from "node:fs";
+import { gunzipSync } from "node:zlib";
 import path from "node:path";
 import { defineConfig, loadEnv, type Plugin, type ViteDevServer } from "vite";
 import { createAuthService } from "./api/_lib/userAuth";
@@ -31,7 +32,7 @@ function normalizeBasePath(raw?: string): string {
  * published it falls back to the repo's own bank file, which is what
  * the old middleware did.
  */
-function localQuestionBankPlugin(adminToken: string): Plugin {
+function localQuestionBankPlugin(adminToken: string, env: Record<string, string>): Plugin {
   const sourcePath = path.resolve(import.meta.dirname, "..", "question_bank_infinitycloser.json");
   const publishedPath = path.resolve(import.meta.dirname, ".local-question-bank.json");
 
@@ -41,17 +42,27 @@ function localQuestionBankPlugin(adminToken: string): Plugin {
     res.end(JSON.stringify(body));
   };
 
-  const authorized = (req: import("node:http").IncomingMessage) => {
-    if (!adminToken) return false;
+  // Same rule as the Vercel function: the admin token, or a signed-in manager.
+  const authorized = async (req: import("node:http").IncomingMessage) => {
     const header = req.headers.authorization || "";
-    return header.startsWith("Bearer ") && header.slice(7) === adminToken;
+    if (adminToken && header.startsWith("Bearer ") && header.slice(7) === adminToken) return true;
+    const secret = env.AUTH_SECRET || "local-dev-secret";
+    const auth = createAuthService(fileStore(path.resolve(import.meta.dirname, ".local-users.json"), secret), {
+      ...env,
+      AUTH_SECRET: secret,
+    });
+    return auth.isManager(header);
   };
 
   const readBody = (req: import("node:http").IncomingMessage) =>
     new Promise<string>((resolve, reject) => {
-      let raw = "";
-      req.on("data", chunk => { raw += chunk; });
-      req.on("end", () => resolve(raw));
+      const chunks: Buffer[] = [];
+      req.on("data", chunk => { chunks.push(Buffer.from(chunk)); });
+      req.on("end", () => {
+        const raw = Buffer.concat(chunks);
+        const gz = String(req.headers["x-bank-encoding"] || "").toLowerCase() === "gzip";
+        resolve((gz ? gunzipSync(raw) : raw).toString("utf8"));
+      });
       req.on("error", reject);
     });
 
@@ -75,7 +86,7 @@ function localQuestionBankPlugin(adminToken: string): Plugin {
         }
 
         if (req.method === "PUT" || req.method === "POST") {
-          if (!authorized(req)) {
+          if (!(await authorized(req))) {
             json(res, 401, {
               error: adminToken
                 ? "טוקן ניהול שגוי"
@@ -94,7 +105,7 @@ function localQuestionBankPlugin(adminToken: string): Plugin {
         }
 
         if (req.method === "DELETE") {
-          if (!authorized(req)) {
+          if (!(await authorized(req))) {
             json(res, 401, { error: "טוקן ניהול שגוי או חסר" });
             return;
           }
@@ -159,7 +170,7 @@ export default defineConfig(({ mode }) => {
     react(),
     tailwindcss(),
     jsxLocPlugin(),
-    localQuestionBankPlugin(env.ADMIN_UPLOAD_TOKEN || ""),
+    localQuestionBankPlugin(env.ADMIN_UPLOAD_TOKEN || "", env),
     localAuthPlugin(env),
   ],
   resolve: {

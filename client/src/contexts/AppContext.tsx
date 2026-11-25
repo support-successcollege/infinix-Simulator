@@ -19,12 +19,12 @@ import React, {
 } from "react";
 
 import { validatePasswordStrength } from "@/lib/auth";
+import { fromBase64, gunzipJson, gzipJson, toBase64 } from "@/lib/bankCodec";
 import {
   EMPTY_FILTERS,
   buildArenas,
   calculateScore,
   filterQuestions,
-  mergeBanks,
   parseAnyQuestionBank,
   pickQuestions,
   toQuizQuestions,
@@ -115,8 +115,6 @@ interface ServerUser {
  */
 const SHARED_BANK_ENDPOINT = "/api/question-bank";
 
-/** Static banks in client/public, merged under the active bank for trainees. */
-const ADD_ON_BANK_FILES = ["question_bank_insurance.json"];
 
 /** Which of the layered sources produced the bank currently in use. */
 export type BankSource = "shared" | "local" | "bundled" | "none";
@@ -238,7 +236,7 @@ interface AppContextValue {
   isDemoContent: boolean;
   /** The bank the manager edits and publishes (shared, local or bundled). */
   questionBankData: QuestionBankData | null;
-  /** What trainees practise from: the bank above plus the shipped add-on banks. */
+  /** What trainees practise from: the same bank. */
   practiceBankData: QuestionBankData | null;
   importQuestionBank: (file: File) => Promise<void>;
   importQuestionBankCategories: (file: File) => Promise<void>;
@@ -256,6 +254,10 @@ interface AppContextValue {
   adminToken: string;
   setAdminToken: (token: string) => void;
   publishQuestionBank: (file: File) => Promise<void>;
+  /** Publish the bank on screen, including unpublished edits. */
+  publishCurrentBank: () => Promise<void>;
+  /** True when this browser can publish: a manager session or the admin token. */
+  canPublish: boolean;
   unpublishQuestionBank: () => Promise<void>;
   refreshQuestionBank: () => Promise<void>;
 
@@ -439,7 +441,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     // A local import wins for whoever set it — it was a deliberate
     // act in this browser — but the UI says so, and offers a way out.
-    const storedRaw = readJson<unknown>(STORAGE_KEYS.questionBank, null);
+    let storedRaw = readJson<unknown>(STORAGE_KEYS.questionBank, null);
+    const storedGz = readJson<string>(STORAGE_KEYS.questionBankGz, "");
+    if (storedGz) {
+      try {
+        storedRaw = await gunzipJson(fromBase64(storedGz));
+      } catch {
+        removeKey(STORAGE_KEYS.questionBankGz);
+      }
+    }
     if (storedRaw) {
       const parsed = parseAnyQuestionBank(storedRaw);
       if (parsed) return { bank: parsed, source: "local", sharedExists: Boolean(shared) };
@@ -455,41 +465,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   }, [fetchSharedBank, fetchBundledBank]);
 
-  /**
-   * Add-on banks ship as their own static files and are always laid
-   * under whichever bank is active. They stay out of the shared bank on
-   * purpose: the publish endpoint caps a bank at 4MB, and the insurance
-   * past exams alone are larger than that.
-   */
-  const [addOnBanks, setAddOnBanks] = useState<QuestionBankData[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const baseUrl = import.meta.env.BASE_URL || "/";
-    const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-    (async () => {
-      const loaded: QuestionBankData[] = [];
-      for (const file of ADD_ON_BANK_FILES) {
-        try {
-          const res = await fetch(`${normalizedBase}${file}`);
-          if (!res.ok) continue;
-          const parsed = parseAnyQuestionBank(await res.json());
-          if (parsed) loaded.push(parsed);
-        } catch {
-          // A missing add-on just means fewer topics.
-        }
-      }
-      if (!cancelled) setAddOnBanks(loaded);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const practiceBank = useMemo(
-    () => mergeBanks(questionBank, ...addOnBanks),
-    [questionBank, addOnBanks]
-  );
+  // Trainees practise on the bank the manager edits and publishes.
+  const practiceBank = questionBank;
 
   const refreshQuestionBank = useCallback(async () => {
     const { bank, source, sharedExists } = await loadQuestionBank();
@@ -661,12 +638,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // ── Question bank management ─────────────────────────────────
 
+  /** Drops this browser's unpublished copy of the bank. */
+  const clearLocalBank = useCallback(() => {
+    removeKey(STORAGE_KEYS.questionBank);
+    removeKey(STORAGE_KEYS.questionBankGz);
+  }, []);
+
+  // Kept gzipped: the full bank is about 10MB of JSON, more than
+  // localStorage holds, and about 1.6MB compressed.
   const persistBank = useCallback((next: QuestionBankData) => {
-    const saved = writeJson(STORAGE_KEYS.questionBank, next);
-    if (!saved) {
-      console.warn("[bank] could not persist question bank; changes are session-only");
-    }
-    return saved;
+    removeKey(STORAGE_KEYS.questionBank);
+    void gzipJson(next)
+      .then(bytes => {
+        if (!writeJson(STORAGE_KEYS.questionBankGz, toBase64(bytes))) {
+          console.warn("[bank] could not persist question bank; changes are session-only");
+        }
+      })
+      .catch(err => console.warn("[bank] could not compress question bank", err));
   }, []);
 
   const importQuestionBank = useCallback(
@@ -707,11 +695,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const clearImportedQuestionBank = useCallback(() => {
-    removeKey(STORAGE_KEYS.questionBank);
+    clearLocalBank();
     // Dropping the override falls back through the same ladder the
     // app boots with, rather than leaving the screen empty.
     void refreshQuestionBank();
-  }, [refreshQuestionBank]);
+  }, [clearLocalBank, refreshQuestionBank]);
 
   // ── Publishing ───────────────────────────────────────────────
 
@@ -732,48 +720,63 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  /**
-   * Publish a bank for every student. The file is parsed and
-   * validated here first, so an unusable bank is rejected before it
-   * can replace a working one.
-   */
-  const publishQuestionBank = useCallback(
-    async (file: File) => {
-      if (!adminToken) throw new Error("נדרש טוקן ניהול לפרסום");
+  /** A manager's session, or the separate admin token, may publish. */
+  const publishCredential = adminToken || (user?.role === "manager" ? authToken : "");
 
-      const raw = JSON.parse(await file.text());
+  /**
+   * Publish a bank for every student. It is validated here first, so
+   * an unusable bank is rejected before it can replace a working one,
+   * and sent gzipped, which keeps the full bank under the 4.5MB a
+   * Vercel Function accepts.
+   */
+  const sendBank = useCallback(
+    async (raw: unknown) => {
+      if (!publishCredential) throw new Error("יש להתחבר כמנהל או להזין טוקן ניהול כדי לפרסם");
       if (!parseAnyQuestionBank(raw)) throw new Error("מבנה JSON לא תקין");
 
+      const body = await gzipJson(raw);
       const res = await fetch(SHARED_BANK_ENDPOINT, {
         method: "PUT",
         headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${adminToken}`,
+          "Content-Type": "application/octet-stream",
+          "X-Bank-Encoding": "gzip",
+          Authorization: `Bearer ${publishCredential}`,
         },
-        body: JSON.stringify(raw),
+        body: body as BodyInit,
       });
       if (!res.ok) throw new Error(await errorFrom(res, "פרסום המאגר נכשל"));
 
       // A local override would keep shadowing what was just published,
       // which is the one moment it must not: the manager needs to see
       // exactly what the students now see.
-      removeKey(STORAGE_KEYS.questionBank);
+      clearLocalBank();
       await refreshQuestionBank();
     },
-    [adminToken, refreshQuestionBank]
+    [clearLocalBank, publishCredential, refreshQuestionBank]
   );
 
+  const publishQuestionBank = useCallback(
+    async (file: File) => sendBank(JSON.parse(await file.text())),
+    [sendBank]
+  );
+
+  /** Publish what is on screen now, including unpublished edits. */
+  const publishCurrentBank = useCallback(async () => {
+    if (!questionBank) throw new Error("אין מאגר לפרסום");
+    await sendBank(questionBank);
+  }, [questionBank, sendBank]);
+
   const unpublishQuestionBank = useCallback(async () => {
-    if (!adminToken) throw new Error("נדרש טוקן ניהול");
+    if (!publishCredential) throw new Error("יש להתחבר כמנהל או להזין טוקן ניהול");
 
     const res = await fetch(SHARED_BANK_ENDPOINT, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${adminToken}` },
+      headers: { Authorization: `Bearer ${publishCredential}` },
     });
     if (!res.ok) throw new Error(await errorFrom(res, "ביטול הפרסום נכשל"));
 
     await refreshQuestionBank();
-  }, [adminToken, refreshQuestionBank]);
+  }, [publishCredential, refreshQuestionBank]);
 
   const deleteQuestionBankCategory = useCallback(
     (categoryName: string) => {
@@ -792,9 +795,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const resetQuestionBankContent = useCallback(async () => {
-    removeKey(STORAGE_KEYS.questionBank);
+    clearLocalBank();
     await refreshQuestionBank();
-  }, [refreshQuestionBank]);
+  }, [clearLocalBank, refreshQuestionBank]);
 
   // ── Quiz flow ────────────────────────────────────────────────
 
@@ -948,6 +951,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       adminToken,
       setAdminToken,
       publishQuestionBank,
+      publishCurrentBank,
+      canPublish: !!publishCredential,
       unpublishQuestionBank,
       refreshQuestionBank,
       currentSession,
@@ -995,6 +1000,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       adminToken,
       setAdminToken,
       publishQuestionBank,
+      publishCurrentBank,
+      publishCredential,
       unpublishQuestionBank,
       refreshQuestionBank,
       currentSession,

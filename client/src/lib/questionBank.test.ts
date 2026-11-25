@@ -7,7 +7,6 @@ import {
   buildFacets,
   calculateScore,
   filterQuestions,
-  mergeBanks,
   normalizeDifficulty,
   parseAnyQuestionBank,
   parseLegacyMergedExamSchema,
@@ -35,31 +34,6 @@ describe("normalizeDifficulty", () => {
     expect(normalizeDifficulty(undefined)).toBeUndefined();
     expect(normalizeDifficulty("")).toBeUndefined();
     expect(normalizeDifficulty("impossible")).toBeUndefined();
-  });
-});
-
-describe("mergeBanks", () => {
-  const cat = (product: string) => ({ product, questions: [] });
-
-  it("adds add-on categories next to the main bank's", () => {
-    const merged = mergeBanks({ categories: { כלכלה: cat("main") } }, { categories: { "ביטוח רכוש": cat("addon") } });
-    expect(Object.keys(merged!.categories).sort()).toEqual(["ביטוח רכוש", "כלכלה"].sort());
-  });
-
-  it("lets the main bank win a name clash", () => {
-    const merged = mergeBanks({ categories: { כלכלה: cat("main") } }, { categories: { כלכלה: cat("addon") } });
-    expect(merged!.categories["כלכלה"].product).toBe("main");
-  });
-
-  it("serves the add-on alone when no main bank loaded", () => {
-    const merged = mergeBanks(null, { categories: { "ביטוח רכוש": cat("addon") } });
-    expect(Object.keys(merged!.categories)).toEqual(["ביטוח רכוש"]);
-  });
-
-  it("returns the main bank untouched when there is no add-on", () => {
-    const main: QuestionBankData = { categories: { כלכלה: cat("main") } };
-    expect(mergeBanks(main, null)).toBe(main);
-    expect(mergeBanks(null, null)).toBeNull();
   });
 });
 

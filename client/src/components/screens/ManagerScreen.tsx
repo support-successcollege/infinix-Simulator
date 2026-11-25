@@ -13,7 +13,6 @@ export default function ManagerScreen() {
     importQuestionBankCategories,
     questionBankLoaded,
     questionBankData,
-    practiceBankData,
     replaceQuestionBank,
     deleteQuestionBankCategory,
     resetQuestionBankContent,
@@ -310,7 +309,6 @@ export default function ManagerScreen() {
           <ContentTab
             questionBankLoaded={questionBankLoaded}
             questionBankData={questionBankData}
-            practiceBankData={practiceBankData}
             replaceQuestionBank={replaceQuestionBank}
             importQuestionBankCategories={importQuestionBankCategories}
             deleteQuestionBankCategory={deleteQuestionBankCategory}
@@ -327,7 +325,6 @@ export default function ManagerScreen() {
 function ContentTab({
   questionBankLoaded,
   questionBankData,
-  practiceBankData,
   replaceQuestionBank,
   importQuestionBankCategories,
   deleteQuestionBankCategory,
@@ -337,8 +334,6 @@ function ContentTab({
 }: {
   questionBankLoaded: boolean;
   questionBankData: QuestionBankData | null;
-  /** The bank trainees practise on: the main bank plus add-on files. */
-  practiceBankData: QuestionBankData | null;
   replaceQuestionBank: (data: QuestionBankData) => void;
   importQuestionBankCategories: (file: File) => Promise<void>;
   deleteQuestionBankCategory: (categoryName: string) => void;
@@ -346,14 +341,10 @@ function ContentTab({
   importInputRef: RefObject<HTMLInputElement | null>;
   onImportJson: ChangeEventHandler<HTMLInputElement>;
 }) {
-  // Add-on topics (the insurance past exams) ship as their own static
-  // file, so they are listed here to be seen but cannot be edited or
-  // published from this screen.
   const categoryNames = useMemo(
-    () => Object.keys(practiceBankData?.categories || questionBankData?.categories || {}).sort((a, b) => a.localeCompare(b, "he")),
-    [practiceBankData, questionBankData]
+    () => Object.keys(questionBankData?.categories || {}).sort((a, b) => a.localeCompare(b, "he")),
+    [questionBankData]
   );
-  const isAddOnCategory = (name: string) => Boolean(name) && !questionBankData?.categories?.[name];
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number>(0);
   const [draft, setDraft] = useState<QuestionBankEntry | null>(null);
@@ -369,8 +360,7 @@ function ContentTab({
     }
   }, [categoryNames, selectedCategory]);
 
-  const readOnly = isAddOnCategory(selectedCategory);
-  const selectedQuestions = ((readOnly ? practiceBankData : questionBankData)?.categories?.[selectedCategory]?.questions || []) as QuestionBankEntry[];
+  const selectedQuestions = (questionBankData?.categories?.[selectedCategory]?.questions || []) as QuestionBankEntry[];
   const selectedQuestion = selectedQuestions[selectedQuestionIndex] || null;
 
   useEffect(() => {
@@ -443,7 +433,7 @@ function ContentTab({
         status: draft.status || "active",
       };
     });
-    toast.success("השאלה נשמרה");
+    toast.success("השאלה נשמרה. כדי שהתלמידים יראו אותה, לחץ \"פרסם את המאגר שמוצג\"");
   };
 
   const exportJson = () => {
@@ -512,20 +502,15 @@ function ContentTab({
             <div className="rounded-xl p-3 max-h-[460px] overflow-y-auto" style={{ background: "var(--background)", border: "1px solid var(--tf-border)" }}>
               <div className="text-xs font-bold mb-2" style={{ color: "var(--muted-foreground)" }}>קטגוריות</div>
               <select className="tf-input mb-2" value={selectedCategory} onChange={e => { setSelectedCategory(e.target.value); setSelectedQuestionIndex(0); }}>
-                {categoryNames.map(c => <option key={c} value={c}>{isAddOnCategory(c) ? `${c} (צפייה בלבד)` : c}</option>)}
+                {categoryNames.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
-              {readOnly && (
-                <div className="text-[11px] mb-2" style={{ color: "var(--muted-foreground)" }}>
-                  נושא מקובץ נפרד (מבחני עבר בביטוח). פעיל לכל התלמידים, לא נערך מכאן.
-                </div>
-              )}
               <div className="text-xs font-bold mb-2" style={{ color: "var(--muted-foreground)" }}>
                 שאלות ({selectedQuestions.length})
               </div>
               <div className="flex gap-1 mb-2">
-                {!readOnly && <button onClick={handleDeleteCategory} className="px-2 py-1 rounded-lg text-[11px] font-bold" style={{ background: "var(--tint-danger-weak)", color: "var(--destructive)" }}>
+                <button onClick={handleDeleteCategory} className="px-2 py-1 rounded-lg text-[11px] font-bold" style={{ background: "var(--tint-danger-weak)", color: "var(--destructive)" }}>
                   מחק קטגוריה
-                </button>}
+                </button>
                 <button onClick={handleResetAll} className="px-2 py-1 rounded-lg text-[11px] font-bold" style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}>
                   איפוס מלא
                 </button>
@@ -550,7 +535,7 @@ function ContentTab({
 
             <div className="rounded-xl p-3" style={{ background: "var(--background)", border: "1px solid var(--tf-border)" }}>
               {draft ? (
-                <fieldset disabled={readOnly} className="flex flex-col gap-2 min-w-0">
+                <div className="flex flex-col gap-2">
                   <label className="text-xs" style={{ color: "var(--muted-foreground)" }}>נוסח שאלה</label>
                   <textarea className="tf-input min-h-[88px]" value={draft.question || ""} onChange={e => setDraft({ ...draft, question: e.target.value })} />
 
@@ -591,7 +576,7 @@ function ContentTab({
                   <label className="text-xs" style={{ color: "var(--muted-foreground)" }}>הערת מאמן</label>
                   <textarea className="tf-input min-h-[72px]" value={draft.coachNote || ""} onChange={e => setDraft({ ...draft, coachNote: e.target.value })} />
 
-                  {!readOnly && <div className="flex flex-wrap gap-2 mt-2">
+                  <div className="flex flex-wrap gap-2 mt-2">
                     <button onClick={saveDraft} className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1" style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}>
                       <Save size={13} /> שמור שאלה
                     </button>
@@ -601,8 +586,8 @@ function ContentTab({
                     <button onClick={deleteQuestion} className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1" style={{ background: "var(--tint-danger-weak)", color: "var(--destructive)" }}>
                       <Trash2 size={13} /> מחק שאלה
                     </button>
-                  </div>}
-                </fieldset>
+                  </div>
+                </div>
               ) : (
                 <div className="text-sm" style={{ color: "var(--muted-foreground)" }}>בחר שאלה מהרשימה כדי לערוך.</div>
               )}
@@ -650,13 +635,28 @@ function PublishPanel() {
     adminToken,
     setAdminToken,
     publishQuestionBank,
+    publishCurrentBank,
+    canPublish,
     unpublishQuestionBank,
     clearImportedQuestionBank,
   } = useApp();
 
   const publishInputRef = useRef<HTMLInputElement | null>(null);
   const [tokenDraft, setTokenDraft] = useState(adminToken);
-  const [busy, setBusy] = useState<"publish" | "unpublish" | null>(null);
+  const [busy, setBusy] = useState<"publish" | "publish-current" | "unpublish" | null>(null);
+
+  const onPublishCurrent = async () => {
+    if (!window.confirm("לפרסם את המאגר שמוצג כאן לכל התלמידים?")) return;
+    setBusy("publish-current");
+    try {
+      await publishCurrentBank();
+      toast.success("המאגר פורסם. כל התלמידים יראו אותו בתוך דקה");
+    } catch (err) {
+      toast.error((err as Error)?.message || "פרסום נכשל");
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const SOURCE_LABEL: Record<typeof bankSource, string> = {
     shared: "מאגר משותף — פעיל לכל התלמידים",
@@ -742,7 +742,7 @@ function PublishPanel() {
       )}
 
       <label className="block text-sm mb-4">
-        <span className="eyebrow">טוקן ניהול</span>
+        <span className="eyebrow">טוקן ניהול (לא חובה למנהל מחובר)</span>
         <div className="flex gap-2 mt-1">
           <input
             className="tf-input"
@@ -764,15 +764,23 @@ function PublishPanel() {
           </button>
         </div>
         <p className="t-caption mt-1.5" style={{ color: "var(--muted-foreground)" }}>
-          מוגדר כמשתנה סביבה ADMIN_UPLOAD_TOKEN ב-Vercel. הבדיקה רצה בשרת.
+          מנהל מחובר מפרסם בלי טוקן. הטוקן (ADMIN_UPLOAD_TOKEN ב-Vercel) נועד למי שאינו מחובר כמנהל.
         </p>
       </label>
 
       <div className="flex gap-2 flex-wrap">
         <button
-          onClick={() => publishInputRef.current?.click()}
-          disabled={!adminToken || busy !== null}
+          onClick={onPublishCurrent}
+          disabled={!canPublish || busy !== null}
           className="btn-primary text-sm"
+        >
+          <Upload size={15} />
+          {busy === "publish-current" ? "מפרסם..." : "פרסם את המאגר שמוצג"}
+        </button>
+        <button
+          onClick={() => publishInputRef.current?.click()}
+          disabled={!canPublish || busy !== null}
+          className="btn-secondary text-sm"
         >
           <Upload size={15} />
           {busy === "publish" ? "מפרסם..." : "פרסם קובץ JSON"}
@@ -780,7 +788,7 @@ function PublishPanel() {
         {sharedBankExists && (
           <button
             onClick={onUnpublish}
-            disabled={!adminToken || busy !== null}
+            disabled={!canPublish || busy !== null}
             className="btn-secondary text-sm"
           >
             {busy === "unpublish" ? "מבטל..." : "בטל פרסום"}

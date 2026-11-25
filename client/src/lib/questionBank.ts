@@ -136,29 +136,6 @@ export function parseLegacyMergedExamSchema(input: unknown): QuestionBankData | 
   };
 }
 
-/**
- * Lay add-on banks (shipped as their own static files) under the main
- * bank. The main bank wins on a name clash, so a manager who publishes
- * a category of the same name replaces the shipped one rather than
- * being silently overridden by it. Returns null only when every input
- * is empty.
- */
-export function mergeBanks(
-  main: QuestionBankData | null,
-  ...addOns: Array<QuestionBankData | null>
-): QuestionBankData | null {
-  const present = addOns.filter((b): b is QuestionBankData => Boolean(b?.categories));
-  if (present.length === 0) return main;
-  const categories = { ...(main?.categories || {}) };
-  present.forEach(addOn => {
-    Object.entries(addOn.categories || {}).forEach(([name, meta]) => {
-      if (!(name in categories)) categories[name] = meta;
-    });
-  });
-  if (!main && Object.keys(categories).length === 0) return null;
-  return { ...(main || {}), categories };
-}
-
 /** Accepts either supported schema; returns null if neither matches. */
 export function parseAnyQuestionBank(input: unknown): QuestionBankData | null {
   return parseQuestionBank(input) || parseLegacyMergedExamSchema(input);

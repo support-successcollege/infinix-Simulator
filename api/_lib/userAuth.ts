@@ -562,7 +562,14 @@ export function createAuthService(store: StoreAdapter, env: AuthEnv, now: () => 
     }
   }
 
-  return { handle };
+  /** True when the request carries a valid session of a manager. */
+  async function isManager(authorization?: string): Promise<boolean> {
+    if (!secret) return false;
+    const who = await whoIs(authorization);
+    return who?.user.role === "manager";
+  }
+
+  return { handle, isManager };
 }
 
 // ── Stores ─────────────────────────────────────────────────────
