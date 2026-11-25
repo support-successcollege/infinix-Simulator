@@ -87,6 +87,10 @@ const BOOTSTRAP_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || "support@successcol
   .toLowerCase();
 const BOOTSTRAP_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "infinix-setup-2024";
 
+/** Optional second manager, for the college's own staff. */
+const MANAGER_EMAIL = (import.meta.env.VITE_MANAGER_EMAIL || "").trim().toLowerCase();
+const MANAGER_PASSWORD = import.meta.env.VITE_MANAGER_PASSWORD || "";
+
 /** Optional shared trainee credential, so students can sign in at all. */
 const STUDENT_EMAIL = (import.meta.env.VITE_STUDENT_EMAIL || "").trim().toLowerCase();
 const STUDENT_PASSWORD = import.meta.env.VITE_STUDENT_PASSWORD || "";
@@ -109,6 +113,18 @@ const SEED_ACCOUNTS: SeedAccount[] = [
     role: "manager",
     mustChangePassword: true,
   },
+  // Same rule as the admin: the password ships in the bundle, so the
+  // first sign-in in each browser forces a rotation.
+  ...(MANAGER_EMAIL && MANAGER_PASSWORD && MANAGER_EMAIL !== BOOTSTRAP_EMAIL
+    ? [{
+        id: "u-manager",
+        name: "מנהל INFINIX",
+        email: MANAGER_EMAIL,
+        password: MANAGER_PASSWORD,
+        role: "manager" as UserRole,
+        mustChangePassword: true,
+      }]
+    : []),
   // A shared trainee login is only sensible because every browser
   // keeps its own history: two students on the same credential still
   // have separate sessions and scores. It is therefore not forced to
