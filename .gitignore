@@ -112,5 +112,8 @@ temp/
 # Locally published question bank (dev stand-in for the Vercel Blob store)
 .local-question-bank.json
 
+# Local user accounts (dev stand-in for the encrypted Blob document)
+.local-users.json
+
 # Vercel
 .vercel

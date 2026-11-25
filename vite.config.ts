@@ -4,6 +4,8 @@ import react from "@vitejs/plugin-react";
 import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, loadEnv, type Plugin, type ViteDevServer } from "vite";
+import { createAuthService } from "./api/_lib/userAuth";
+import { fileStore } from "./api/_lib/userStores";
 
 function normalizeBasePath(raw?: string): string {
   const value = (raw || "").trim();
@@ -108,6 +110,42 @@ function localQuestionBankPlugin(adminToken: string): Plugin {
   };
 }
 
+/**
+ * Dev stand-in for `api/auth.ts`: the same service, with the user
+ * document in a git-ignored file instead of Vercel Blob.
+ */
+function localAuthPlugin(env: Record<string, string>): Plugin {
+  const secret = env.AUTH_SECRET || "local-dev-secret";
+  const filePath = path.resolve(import.meta.dirname, ".local-users.json");
+  return {
+    name: "local-auth",
+    configureServer(server: ViteDevServer) {
+      server.middlewares.use("/api/auth", async (req, res) => {
+        const url = new URL(req.url || "/", "http://localhost");
+        let raw = "";
+        for await (const chunk of req) raw += chunk;
+        let body: unknown = undefined;
+        try {
+          body = raw ? JSON.parse(raw) : undefined;
+        } catch {
+          body = undefined;
+        }
+        const service = createAuthService(fileStore(filePath, secret), { ...env, AUTH_SECRET: secret });
+        const out = await service.handle({
+          method: req.method || "GET",
+          action: url.searchParams.get("action") || "",
+          id: url.searchParams.get("id") || undefined,
+          body,
+          authorization: req.headers.authorization,
+        });
+        res.statusCode = out.status;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify(out.body));
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   // ADMIN_UPLOAD_TOKEN is a server-side secret and deliberately has
   // no VITE_ prefix, so it never reaches the bundle. loadEnv with an
@@ -122,6 +160,7 @@ export default defineConfig(({ mode }) => {
     tailwindcss(),
     jsxLocPlugin(),
     localQuestionBankPlugin(env.ADMIN_UPLOAD_TOKEN || ""),
+    localAuthPlugin(env),
   ],
   resolve: {
     alias: {

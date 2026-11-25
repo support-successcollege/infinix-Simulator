@@ -2,10 +2,10 @@
    AppContext — InfinityCloser Global State
    Manages: auth, current screen, training config, quiz state
 
-   Persistence note: this app has no server. Accounts, history and
-   preferences all live in the visitor's own localStorage, which
-   means they are per-browser and per-device. See docs/SECURITY.md
-   for what that does and does not guarantee.
+   Accounts live on the server (api/auth.ts): one user list for the
+   whole site, so a user created once signs in from any device. The
+   browser keeps only a signed session token. Training history and
+   preferences still live in the visitor's own localStorage.
    ============================================================ */
 
 import React, {
@@ -18,12 +18,7 @@ import React, {
   useState,
 } from "react";
 
-import {
-  createCredential,
-  isCryptoAvailable,
-  validatePasswordStrength,
-  verifyPassword,
-} from "@/lib/auth";
+import { validatePasswordStrength } from "@/lib/auth";
 import {
   EMPTY_FILTERS,
   buildArenas,
@@ -37,7 +32,6 @@ import {
 import { STORAGE_KEYS, isStorageAvailable, readJson, removeKey, writeJson } from "@/lib/storage";
 import type {
   Arena,
-  AuthUserAccount,
   PublicAuthUser,
   Question,
   QuestionBankData,
@@ -65,84 +59,53 @@ export type {
   User,
 } from "@/types/app";
 
-// ── Seed accounts ──────────────────────────────────────────────
-// Sourced from build-time env so credentials are not committed. On a
-// static build the values still end up inside the JS bundle — the
-// real protection for the admin is that `mustChangePassword` forces
-// a rotation the first time it is used.
-//
-// These are *not* pre-created in every browser. They are matched at
-// sign-in, which fixes two things at once:
-//
-//   1. A visitor who never types an admin password never gets an
-//      admin account. The old code seeded one into every browser
-//      that so much as loaded the page.
-//   2. Rotating VITE_ADMIN_PASSWORD takes effect immediately. The
-//      old code hashed the value once, on the first visit, and then
-//      ignored the env var forever — so changing it in Vercel looked
-//      like it did nothing, because the browser was still holding an
-//      account built from the previous value.
-const BOOTSTRAP_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || "support@successcollege.co.il")
-  .trim()
-  .toLowerCase();
-const BOOTSTRAP_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "infinix-setup-2024";
+// ── Accounts API ───────────────────────────────────────────────
+/**
+ * Sign-in and user management run on the server (api/auth.ts; in dev
+ * the same service is mounted by vite.config.ts). Seed credentials are
+ * read there from the server's environment and never reach the bundle.
+ */
+const AUTH_ENDPOINT = "/api/auth";
 
-/** Optional second manager, for the college's own staff. */
-const MANAGER_EMAIL = (import.meta.env.VITE_MANAGER_EMAIL || "").trim().toLowerCase();
-const MANAGER_PASSWORD = import.meta.env.VITE_MANAGER_PASSWORD || "";
+class AuthHttpError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
 
-/** Optional shared trainee credential, so students can sign in at all. */
-const STUDENT_EMAIL = (import.meta.env.VITE_STUDENT_EMAIL || "").trim().toLowerCase();
-const STUDENT_PASSWORD = import.meta.env.VITE_STUDENT_PASSWORD || "";
+async function authFetch<T>(
+  action: string,
+  options: { method?: string; body?: unknown; token?: string; id?: string } = {}
+): Promise<T> {
+  const params = new URLSearchParams({ action });
+  if (options.id) params.set("id", options.id);
+  let res: Response;
+  try {
+    res = await fetch(`${AUTH_ENDPOINT}?${params}`, {
+      method: options.method || "GET",
+      headers: {
+        ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+      },
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    });
+  } catch {
+    throw new AuthHttpError("אין חיבור לשרת. בדוק את החיבור לאינטרנט ונסה שוב", 0);
+  }
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new AuthHttpError(data.error || "הפעולה נכשלה", res.status);
+  return data as T;
+}
 
-interface SeedAccount {
+interface ServerUser {
   id: string;
   name: string;
   email: string;
-  password: string;
   role: UserRole;
+  createdAt: string;
   mustChangePassword: boolean;
+  shared?: boolean;
 }
-
-const SEED_ACCOUNTS: SeedAccount[] = [
-  {
-    id: "u-admin",
-    name: "Support Admin",
-    email: BOOTSTRAP_EMAIL,
-    password: BOOTSTRAP_PASSWORD,
-    role: "manager",
-    mustChangePassword: true,
-  },
-  // Same rule as the admin: the password ships in the bundle, so the
-  // first sign-in in each browser forces a rotation.
-  ...(MANAGER_EMAIL && MANAGER_PASSWORD && MANAGER_EMAIL !== BOOTSTRAP_EMAIL
-    ? [{
-        id: "u-manager",
-        name: "מנהל INFINIX",
-        email: MANAGER_EMAIL,
-        password: MANAGER_PASSWORD,
-        role: "manager" as UserRole,
-        mustChangePassword: true,
-      }]
-    : []),
-  // A shared trainee login is only sensible because every browser
-  // keeps its own history: two students on the same credential still
-  // have separate sessions and scores. It is therefore not forced to
-  // rotate — the first student to do so would lock out the rest.
-  ...(STUDENT_EMAIL && STUDENT_PASSWORD
-    ? [{
-        id: "u-trainee",
-        name: "מתאמן",
-        email: STUDENT_EMAIL,
-        password: STUDENT_PASSWORD,
-        role: "trainee" as UserRole,
-        mustChangePassword: false,
-      }]
-    : []),
-];
-
-/** Salt used to keep a miss as slow as a hit. */
-const TIMING_SALT = "00000000000000000000000000000000";
 
 // ── Shared question bank ───────────────────────────────────────
 /**
@@ -241,7 +204,7 @@ interface AppContextValue {
   // Auth
   user: User | null;
   isAuthenticated: boolean;
-  /** False until stored accounts have been loaded and migrated. */
+  /** False until the stored session has been checked with the server. */
   authReady: boolean;
   /** True while the signed-in user is still on the bootstrap password. */
   mustChangePassword: boolean;
@@ -256,8 +219,9 @@ interface AppContextValue {
     password: string;
     role: UserRole;
   }) => Promise<void>;
-  updateAuthUserRole: (userId: string, role: UserRole) => void;
-  deleteAuthUser: (userId: string) => void;
+  updateAuthUserRole: (userId: string, role: UserRole) => Promise<void>;
+  resetAuthUserPassword: (userId: string, password: string) => Promise<void>;
+  deleteAuthUser: (userId: string) => Promise<void>;
 
   // Navigation
   currentScreen: Screen;
@@ -318,7 +282,10 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [authUsers, setAuthUsers] = useState<AuthUserAccount[]>([]);
+  const [authUsers, setAuthUsers] = useState<PublicAuthUser[]>([]);
+  const [authToken, setAuthToken] = useState<string>(() =>
+    readJson<string>(STORAGE_KEYS.authToken, "")
+  );
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<User | null>(() =>
     readJson<User | null>(STORAGE_KEYS.session, null)
@@ -349,9 +316,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ── Persistence ──────────────────────────────────────────────
 
   useEffect(() => {
-    if (!authReady) return; // Don't clobber stored accounts with the empty initial state.
-    writeJson(STORAGE_KEYS.authUsers, authUsers);
-  }, [authUsers, authReady]);
+    if (authToken) writeJson(STORAGE_KEYS.authToken, authToken);
+    else removeKey(STORAGE_KEYS.authToken);
+  }, [authToken]);
 
   useEffect(() => {
     if (user) writeJson(STORAGE_KEYS.session, user);
@@ -366,103 +333,59 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     writeJson(STORAGE_KEYS.trainingConfig, trainingConfig);
   }, [trainingConfig]);
 
-  // ── Account bootstrap + migration ────────────────────────────
+  // ── Session check ────────────────────────────────────────────
+  // The stored user renders at once; the server then confirms the
+  // token is still good (not expired, password not changed elsewhere,
+  // account not deleted) and refreshes the role and name.
+
+  const toUser = useCallback(
+    (u: ServerUser, previous: User | null): User => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      joinDate: u.createdAt || previous?.joinDate || new Date().toISOString(),
+      weeklyGoal: previous?.id === u.id ? previous.weeklyGoal : 5,
+    }),
+    []
+  );
 
   useEffect(() => {
     let cancelled = false;
+    // Accounts from the per-browser era are not carried over.
+    removeKey(STORAGE_KEYS.authUsers);
+    removeKey(STORAGE_KEYS.legacyAuthUsers);
 
-    const bootstrap = async () => {
-      const stored = readJson<unknown[]>(STORAGE_KEYS.authUsers, []);
+    if (!authToken) {
+      setUser(null);
+      setAuthReady(true);
+      return;
+    }
 
-      if (Array.isArray(stored) && stored.length > 0) {
-        const normalized = stored
-          .map(raw => {
-            const u = raw as Partial<AuthUserAccount>;
-            return {
-              id: String(u.id || ""),
-              name: String(u.name || "").trim(),
-              email: String(u.email || "").trim().toLowerCase(),
-              salt: String(u.salt || ""),
-              passwordHash: String(u.passwordHash || ""),
-              role: sanitizeRole(u.role),
-              createdAt: String(u.createdAt || new Date().toISOString()),
-              mustChangePassword: !!u.mustChangePassword,
-            } satisfies AuthUserAccount;
-          })
-          .filter(u => u.id && u.name && u.email && u.salt && u.passwordHash);
-
-        if (normalized.length > 0) {
-          if (!cancelled) {
-            setAuthUsers(normalized);
-            setAuthReady(true);
-          }
-          return;
+    authFetch<{ user: ServerUser }>("me", { token: authToken })
+      .then(({ user: fresh }) => {
+        if (cancelled) return;
+        setUser(prev => toUser(fresh, prev));
+        setMustChangePassword(!!fresh.mustChangePassword);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        // Offline or server trouble: keep the stored session. Rejected: sign out.
+        if (err instanceof AuthHttpError && err.status !== 0 && err.status < 500) {
+          setAuthToken("");
+          setUser(null);
         }
-      }
+      })
+      .finally(() => {
+        if (!cancelled) setAuthReady(true);
+      });
 
-      // Migrate v1 accounts, which stored passwords as plaintext.
-      const legacy = readJson<Array<Record<string, unknown>>>(STORAGE_KEYS.legacyAuthUsers, []);
-      if (Array.isArray(legacy) && legacy.length > 0 && isCryptoAvailable()) {
-        try {
-          const migrated = await Promise.all(
-            legacy
-              .filter(u => u.email && u.password)
-              .map(async u => {
-                const { salt, passwordHash } = await createCredential(String(u.password));
-                return {
-                  id: String(u.id || `u-${crypto.randomUUID()}`),
-                  name: String(u.name || "").trim() || String(u.email),
-                  email: String(u.email).trim().toLowerCase(),
-                  salt,
-                  passwordHash,
-                  role: sanitizeRole(u.role),
-                  createdAt: new Date().toISOString(),
-                  mustChangePassword: false,
-                } satisfies AuthUserAccount;
-              })
-          );
-          if (migrated.length > 0) {
-            // Drop the plaintext copy now that hashes exist.
-            removeKey(STORAGE_KEYS.legacyAuthUsers);
-            if (!cancelled) {
-              setAuthUsers(migrated);
-              setAuthReady(true);
-            }
-            return;
-          }
-        } catch (err) {
-          console.warn("[auth] legacy migration failed", err);
-        }
-      }
-
-      // Fresh install: no accounts are created here. The seed
-      // credentials are matched in `login` instead, so this browser
-      // stays account-free until someone actually signs in.
-      if (!isCryptoAvailable()) {
-        console.error("[auth] Web Crypto unavailable — sign-in requires HTTPS or localhost");
-      }
-      if (!cancelled) setAuthReady(true);
-    };
-
-    bootstrap();
     return () => {
       cancelled = true;
     };
+    // Only on load: later token changes come from sign-in or a password change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // A stored session is meaningless if its account is gone.
-  useEffect(() => {
-    if (!authReady || !user) return;
-    const account = authUsers.find(a => a.id === user.id);
-    if (!account) {
-      setUser(null);
-      return;
-    }
-    setMustChangePassword(!!account.mustChangePassword);
-    if (account.role !== user.role) {
-      setUser(prev => (prev ? { ...prev, role: account.role } : prev));
-    }
-  }, [authReady, authUsers, user]);
 
   // ── Question bank loading ────────────────────────────────────
 
@@ -617,70 +540,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(
     async (email: string, password: string): Promise<LoginResult> => {
-      if (!isCryptoAvailable()) {
-        return { ok: false, error: "נדרש חיבור מאובטח (HTTPS) כדי להתחבר" };
-      }
-
-      const normalizedEmail = String(email || "").trim().toLowerCase();
-
-      const signIn = (account: AuthUserAccount) => {
-        setUser({
-          id: account.id,
-          name: account.name,
-          email: account.email,
-          role: account.role,
-          joinDate: account.createdAt,
-          weeklyGoal: 5,
+      try {
+        const { token, user: signedIn } = await authFetch<{ token: string; user: ServerUser }>("login", {
+          method: "POST",
+          body: { email, password },
         });
-        setMustChangePassword(!!account.mustChangePassword);
+        setAuthToken(token);
+        setUser(prev => toUser(signedIn, prev));
+        setMustChangePassword(!!signedIn.mustChangePassword);
         setCurrentScreen("hub");
-      };
-
-      const account = authUsers.find(a => a.email === normalizedEmail);
-
-      // A stored account always wins, so a rotated password cannot be
-      // undone by whatever the env var happens to say today.
-      if (account) {
-        const matched = await verifyPassword(password, account.salt, account.passwordHash);
-        if (!matched) return { ok: false, error: "מייל או סיסמה שגויים" };
-        signIn(account);
-        return { ok: true, mustChangePassword: !!account.mustChangePassword };
+        return { ok: true, mustChangePassword: !!signedIn.mustChangePassword };
+      } catch (err) {
+        return { ok: false, error: (err as Error).message || "ההתחברות נכשלה" };
       }
-
-      // No account for this address yet. Seed credentials are read
-      // from the current build, so rotating one in Vercel takes
-      // effect on the next sign-in rather than never.
-      const seed = SEED_ACCOUNTS.find(
-        s => s.password && s.email === normalizedEmail && s.password === password
-      );
-
-      if (!seed) {
-        // Hash anyway, so a wrong email and a wrong password take the
-        // same amount of time to reject.
-        await verifyPassword(password, TIMING_SALT, "");
-        return { ok: false, error: "מייל או סיסמה שגויים" };
-      }
-
-      const { salt, passwordHash } = await createCredential(seed.password);
-      const created: AuthUserAccount = {
-        id: seed.id,
-        name: seed.name,
-        email: seed.email,
-        salt,
-        passwordHash,
-        role: seed.role,
-        createdAt: new Date().toISOString(),
-        mustChangePassword: seed.mustChangePassword,
-      };
-
-      setAuthUsers(prev => [...prev, created]);
-      signIn(created);
-      return { ok: true, mustChangePassword: seed.mustChangePassword };
     },
-    [authUsers]
+    [toUser]
   );
 
   const logout = useCallback(() => {
+    setAuthToken("");
+    setAuthUsers([]);
     setUser(null);
     setMustChangePassword(false);
     setCurrentSession(null);
@@ -692,105 +571,84 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const changePassword = useCallback(
     async (currentPassword: string, newPassword: string) => {
-      if (!user) throw new Error("אין משתמש מחובר");
-
-      const account = authUsers.find(a => a.id === user.id);
-      if (!account) throw new Error("חשבון המשתמש לא נמצא");
-
-      const ok = await verifyPassword(currentPassword, account.salt, account.passwordHash);
-      if (!ok) throw new Error("הסיסמה הנוכחית שגויה");
-
+      if (!user || !authToken) throw new Error("אין משתמש מחובר");
       const weakness = validatePasswordStrength(newPassword);
       if (weakness) throw new Error(weakness);
       if (currentPassword === newPassword) throw new Error("הסיסמה החדשה זהה לנוכחית");
 
-      const { salt, passwordHash } = await createCredential(newPassword);
-      setAuthUsers(prev =>
-        prev.map(a =>
-          a.id === user.id ? { ...a, salt, passwordHash, mustChangePassword: false } : a
-        )
-      );
+      const { token } = await authFetch<{ token: string }>("password", {
+        method: "POST",
+        token: authToken,
+        body: { currentPassword, newPassword },
+      });
+      setAuthToken(token);
       setMustChangePassword(false);
     },
-    [authUsers, user]
+    [authToken, user]
   );
 
+  // The display name is a local preference; the account name is what
+  // a manager sets on the team screen.
   const updateUserProfile = useCallback(
     (patch: Partial<Pick<User, "name" | "weeklyGoal">>) => {
       setUser(prev => (prev ? { ...prev, ...patch } : prev));
-      if (patch.name) {
-        setAuthUsers(prev =>
-          prev.map(a => (a.id === user?.id ? { ...a, name: patch.name! } : a))
-        );
-      }
     },
-    [user?.id]
+    []
   );
 
-  // Validation happens BEFORE setState. React may invoke a state
-  // updater more than once (StrictMode, concurrent re-render), so
-  // throwing from inside one is neither reliable nor catchable at
-  // the call site.
+  const refreshAuthUsers = useCallback(async () => {
+    if (!authToken || user?.role !== "manager") {
+      setAuthUsers([]);
+      return;
+    }
+    const { users } = await authFetch<{ users: ServerUser[] }>("users", { token: authToken });
+    setAuthUsers(users.map(({ id, name, email, role, shared }) => ({ id, name, email, role, shared: !!shared })));
+  }, [authToken, user?.role]);
+
+  useEffect(() => {
+    refreshAuthUsers().catch(err => console.warn("[auth] could not load users", err));
+  }, [refreshAuthUsers]);
+
   const createAuthUser = useCallback(
     async (payload: { name: string; email: string; password: string; role: UserRole }) => {
       const name = String(payload.name || "").trim();
       const email = String(payload.email || "").trim().toLowerCase();
       const password = String(payload.password || "");
-
       if (!name || !email || !password) throw new Error("יש למלא שם, מייל וסיסמה");
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("כתובת המייל אינה תקינה");
-      if (authUsers.some(u => u.email === email)) throw new Error("קיים כבר משתמש עם המייל הזה");
-
       const weakness = validatePasswordStrength(password);
       if (weakness) throw new Error(weakness);
-      if (!isCryptoAvailable()) throw new Error("נדרש חיבור מאובטח (HTTPS) ליצירת משתמש");
 
-      const { salt, passwordHash } = await createCredential(password);
-      setAuthUsers(prev => {
-        // Re-check inside the updater in case two adds raced.
-        if (prev.some(u => u.email === email)) return prev;
-        return [
-          ...prev,
-          {
-            id: `u-${crypto.randomUUID()}`,
-            name,
-            email,
-            salt,
-            passwordHash,
-            role: sanitizeRole(payload.role),
-            createdAt: new Date().toISOString(),
-          },
-        ];
-      });
+      await authFetch("users", { method: "POST", token: authToken, body: { name, email, password, role: payload.role } });
+      await refreshAuthUsers();
     },
-    [authUsers]
+    [authToken, refreshAuthUsers]
   );
 
   const updateAuthUserRole = useCallback(
-    (userId: string, role: UserRole) => {
-      const current = authUsers.find(u => u.id === userId);
-      if (!current) throw new Error("המשתמש לא נמצא");
-      if (current.role === "manager" && role !== "manager") {
-        const managerCount = authUsers.filter(u => u.role === "manager").length;
-        if (managerCount <= 1) throw new Error("חייב להישאר לפחות משתמש הנהלה אחד");
-      }
-      setAuthUsers(prev => prev.map(u => (u.id === userId ? { ...u, role } : u)));
+    async (userId: string, role: UserRole) => {
+      await authFetch("users", { method: "PATCH", token: authToken, id: userId, body: { role } });
+      await refreshAuthUsers();
     },
-    [authUsers]
+    [authToken, refreshAuthUsers]
+  );
+
+  const resetAuthUserPassword = useCallback(
+    async (userId: string, password: string) => {
+      const weakness = validatePasswordStrength(password);
+      if (weakness) throw new Error(weakness);
+      await authFetch("users", { method: "PATCH", token: authToken, id: userId, body: { password } });
+    },
+    [authToken]
   );
 
   const deleteAuthUser = useCallback(
-    (userId: string) => {
-      const target = authUsers.find(u => u.id === userId);
-      if (!target) throw new Error("המשתמש לא נמצא");
+    async (userId: string) => {
       if (user?.id === userId) throw new Error("לא ניתן למחוק את המשתמש שמחובר כרגע");
-      if (target.role === "manager") {
-        const managerCount = authUsers.filter(u => u.role === "manager").length;
-        if (managerCount <= 1) throw new Error("לא ניתן למחוק את משתמש ההנהלה האחרון");
-      }
-      setAuthUsers(prev => prev.filter(u => u.id !== userId));
+      await authFetch("users", { method: "DELETE", token: authToken, id: userId });
+      await refreshAuthUsers();
     },
-    [authUsers, user?.id]
+    [authToken, refreshAuthUsers, user?.id]
   );
 
   // ── Navigation / config ──────────────────────────────────────
@@ -1053,10 +911,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const currentQuestion = currentSession?.questions[currentQuestionIndex] ?? null;
 
-  const publicAuthUsers = useMemo<PublicAuthUser[]>(
-    () => authUsers.map(({ id, name, email, role }) => ({ id, name, email, role })),
-    [authUsers]
-  );
+  const publicAuthUsers = authUsers;
 
   const value = useMemo<AppContextValue>(
     () => ({
@@ -1071,6 +926,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       authUsers: publicAuthUsers,
       createAuthUser,
       updateAuthUserRole,
+      resetAuthUserPassword,
       deleteAuthUser,
       currentScreen,
       setScreen,
@@ -1118,6 +974,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       publicAuthUsers,
       createAuthUser,
       updateAuthUserRole,
+      resetAuthUserPassword,
       deleteAuthUser,
       currentScreen,
       setScreen,

@@ -19,6 +19,9 @@ export const STORAGE_KEYS = {
    * this browser didn't already have.
    */
   adminToken: "ic_admin_upload_token_v1",
+  /** Signed session token from /api/auth. */
+  authToken: "ic_auth_token_v1",
+  /** Per-browser accounts from before the server held them; cleared on load. */
   authUsers: "ic_auth_users_v2",
   legacyAuthUsers: "ic_auth_users_v1",
   session: "ic_active_session_v1",

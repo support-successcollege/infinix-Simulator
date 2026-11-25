@@ -12,6 +12,6 @@ export default defineConfig({
     // The logic under test is pure — no DOM needed. Node 18+ exposes
     // globalThis.crypto.subtle, which is what lib/auth.ts uses.
     environment: "node",
-    include: ["client/src/**/*.test.ts", "shared/**/*.test.ts"],
+    include: ["client/src/**/*.test.ts", "shared/**/*.test.ts", "api/**/*.test.ts"],
   },
 });
