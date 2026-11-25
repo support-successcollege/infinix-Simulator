@@ -13,6 +13,7 @@ export default function ManagerScreen() {
     importQuestionBankCategories,
     questionBankLoaded,
     questionBankData,
+    practiceBankData,
     replaceQuestionBank,
     deleteQuestionBankCategory,
     resetQuestionBankContent,
@@ -281,6 +282,7 @@ export default function ManagerScreen() {
           <ContentTab
             questionBankLoaded={questionBankLoaded}
             questionBankData={questionBankData}
+            practiceBankData={practiceBankData}
             replaceQuestionBank={replaceQuestionBank}
             importQuestionBankCategories={importQuestionBankCategories}
             deleteQuestionBankCategory={deleteQuestionBankCategory}
@@ -297,6 +299,7 @@ export default function ManagerScreen() {
 function ContentTab({
   questionBankLoaded,
   questionBankData,
+  practiceBankData,
   replaceQuestionBank,
   importQuestionBankCategories,
   deleteQuestionBankCategory,
@@ -306,6 +309,8 @@ function ContentTab({
 }: {
   questionBankLoaded: boolean;
   questionBankData: QuestionBankData | null;
+  /** The bank trainees practise on: the main bank plus add-on files. */
+  practiceBankData: QuestionBankData | null;
   replaceQuestionBank: (data: QuestionBankData) => void;
   importQuestionBankCategories: (file: File) => Promise<void>;
   deleteQuestionBankCategory: (categoryName: string) => void;
@@ -313,10 +318,14 @@ function ContentTab({
   importInputRef: RefObject<HTMLInputElement | null>;
   onImportJson: ChangeEventHandler<HTMLInputElement>;
 }) {
+  // Add-on topics (the insurance past exams) ship as their own static
+  // file, so they are listed here to be seen but cannot be edited or
+  // published from this screen.
   const categoryNames = useMemo(
-    () => Object.keys(questionBankData?.categories || {}).sort((a, b) => a.localeCompare(b, "he")),
-    [questionBankData]
+    () => Object.keys(practiceBankData?.categories || questionBankData?.categories || {}).sort((a, b) => a.localeCompare(b, "he")),
+    [practiceBankData, questionBankData]
   );
+  const isAddOnCategory = (name: string) => Boolean(name) && !questionBankData?.categories?.[name];
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number>(0);
   const [draft, setDraft] = useState<QuestionBankEntry | null>(null);
@@ -332,7 +341,8 @@ function ContentTab({
     }
   }, [categoryNames, selectedCategory]);
 
-  const selectedQuestions = (questionBankData?.categories?.[selectedCategory]?.questions || []) as QuestionBankEntry[];
+  const readOnly = isAddOnCategory(selectedCategory);
+  const selectedQuestions = ((readOnly ? practiceBankData : questionBankData)?.categories?.[selectedCategory]?.questions || []) as QuestionBankEntry[];
   const selectedQuestion = selectedQuestions[selectedQuestionIndex] || null;
 
   useEffect(() => {
@@ -465,7 +475,7 @@ function ContentTab({
           </span>
         </div>
 
-        {!questionBankData || !categoryNames.length ? (
+        {!categoryNames.length ? (
           <div className="text-sm" style={{ color: "var(--muted-foreground)" }}>
             אין מאגר JSON לעריכה. ייבא קובץ כדי להתחיל.
           </div>
@@ -474,15 +484,20 @@ function ContentTab({
             <div className="rounded-xl p-3 max-h-[460px] overflow-y-auto" style={{ background: "var(--background)", border: "1px solid var(--tf-border)" }}>
               <div className="text-xs font-bold mb-2" style={{ color: "var(--muted-foreground)" }}>קטגוריות</div>
               <select className="tf-input mb-2" value={selectedCategory} onChange={e => { setSelectedCategory(e.target.value); setSelectedQuestionIndex(0); }}>
-                {categoryNames.map(c => <option key={c} value={c}>{c}</option>)}
+                {categoryNames.map(c => <option key={c} value={c}>{isAddOnCategory(c) ? `${c} (צפייה בלבד)` : c}</option>)}
               </select>
+              {readOnly && (
+                <div className="text-[11px] mb-2" style={{ color: "var(--muted-foreground)" }}>
+                  נושא מקובץ נפרד (מבחני עבר בביטוח). פעיל לכל התלמידים, לא נערך מכאן.
+                </div>
+              )}
               <div className="text-xs font-bold mb-2" style={{ color: "var(--muted-foreground)" }}>
                 שאלות ({selectedQuestions.length})
               </div>
               <div className="flex gap-1 mb-2">
-                <button onClick={handleDeleteCategory} className="px-2 py-1 rounded-lg text-[11px] font-bold" style={{ background: "var(--tint-danger-weak)", color: "var(--destructive)" }}>
+                {!readOnly && <button onClick={handleDeleteCategory} className="px-2 py-1 rounded-lg text-[11px] font-bold" style={{ background: "var(--tint-danger-weak)", color: "var(--destructive)" }}>
                   מחק קטגוריה
-                </button>
+                </button>}
                 <button onClick={handleResetAll} className="px-2 py-1 rounded-lg text-[11px] font-bold" style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}>
                   איפוס מלא
                 </button>
@@ -507,7 +522,7 @@ function ContentTab({
 
             <div className="rounded-xl p-3" style={{ background: "var(--background)", border: "1px solid var(--tf-border)" }}>
               {draft ? (
-                <div className="flex flex-col gap-2">
+                <fieldset disabled={readOnly} className="flex flex-col gap-2 min-w-0">
                   <label className="text-xs" style={{ color: "var(--muted-foreground)" }}>נוסח שאלה</label>
                   <textarea className="tf-input min-h-[88px]" value={draft.question || ""} onChange={e => setDraft({ ...draft, question: e.target.value })} />
 
@@ -548,7 +563,7 @@ function ContentTab({
                   <label className="text-xs" style={{ color: "var(--muted-foreground)" }}>הערת מאמן</label>
                   <textarea className="tf-input min-h-[72px]" value={draft.coachNote || ""} onChange={e => setDraft({ ...draft, coachNote: e.target.value })} />
 
-                  <div className="flex flex-wrap gap-2 mt-2">
+                  {!readOnly && <div className="flex flex-wrap gap-2 mt-2">
                     <button onClick={saveDraft} className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1" style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}>
                       <Save size={13} /> שמור שאלה
                     </button>
@@ -558,8 +573,8 @@ function ContentTab({
                     <button onClick={deleteQuestion} className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1" style={{ background: "var(--tint-danger-weak)", color: "var(--destructive)" }}>
                       <Trash2 size={13} /> מחק שאלה
                     </button>
-                  </div>
-                </div>
+                  </div>}
+                </fieldset>
               ) : (
                 <div className="text-sm" style={{ color: "var(--muted-foreground)" }}>בחר שאלה מהרשימה כדי לערוך.</div>
               )}
