@@ -12,7 +12,8 @@ import { useEffect, useMemo, useRef, useState, type ChangeEventHandler } from "r
 import { useApp, type BankSource } from "@/contexts/AppContext";
 import { EMPTY_FILTERS, toQuizQuestions } from "@/lib/questionBank";
 import { daysUntil, examFormat, openMistakes, readiness, recentYears, READY_EXAMS } from "@/lib/exam";
-import { readDraft, readExamDates, saveExamDate } from "@/lib/examDraft";
+import { readDraft, readExamDates, readOpenDraft, saveExamDate } from "@/lib/examDraft";
+import OpenArenaHome from "@/components/screens/OpenArenaHome";
 import { Clock, ChevronLeft, Upload, FlaskConical, AlertTriangle, Timer, BookOpen, RotateCcw, CheckCircle2, CalendarDays, PlayCircle } from "lucide-react";
 import { toast } from "sonner";
 
@@ -48,6 +49,7 @@ export default function HubScreen() {
     startQuiz,
     startExam,
     resumeExam,
+    startOpen,
     importQuestionBank,
     clearImportedQuestionBank,
     bankSource,
@@ -66,6 +68,7 @@ export default function HubScreen() {
   }, [selected, setTrainingConfig, trainingConfig.arenaName]);
 
   const draft = readDraft(user?.id);
+  const openDraft = readOpenDraft(user?.id);
   const draftLeft = draft ? Math.max(0, Math.round((draft.deadline - Date.now()) / 60_000)) : 0;
 
   const pool = useMemo(
@@ -154,6 +157,23 @@ export default function HubScreen() {
           </div>
         )}
 
+        {openDraft && (
+          <div className="banner-card">
+            <PlayCircle size={22} style={{ color: "var(--accent)", flexShrink: 0 }} aria-hidden="true" />
+            <div className="flex-1 min-w-0">
+              <div className="eyebrow mb-1">המשך מאיפה שעצרת</div>
+              <div className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+                {openDraft.run.examLabel || openDraft.run.arenaName}
+                {" · "}
+                {openDraft.deadline > Date.now() ? `נשארו ${Math.round((openDraft.deadline - Date.now()) / 60_000)} דקות` : "הזמן נגמר, נגיש לבדיקה"}
+              </div>
+            </div>
+            <button onClick={() => startOpen({ ...openDraft.run })} className="btn-primary flex-shrink-0 text-sm">
+              המשך מבחן
+            </button>
+          </div>
+        )}
+
         {/* Arena choice, for a student who holds more than one. */}
         {arenas.length > 1 && (
           <section>
@@ -196,7 +216,11 @@ export default function HubScreen() {
           </div>
         )}
 
-        {selected && <ArenaHome
+        {selected?.kind === "open" && (
+          <OpenArenaHome key={selected.id} arenaName={selected.name} index={arenas.length > 1 ? "02" : "01"} />
+        )}
+
+        {selected && selected.kind !== "open" && <ArenaHome
           key={selected.id}
           arenaName={selected.name}
           index={arenas.length > 1 ? "02" : "01"}

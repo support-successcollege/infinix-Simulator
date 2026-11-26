@@ -14,6 +14,7 @@ import {
   type UserDoc,
 } from "./userAuth.js";
 import { EMPTY_HISTORY, historyPathname, openHistory, sealHistory, type HistoryStore } from "./history.js";
+import { quotaPathname, type QuotaStore } from "./grading.js";
 
 // ── Versioned documents on public Blob ────────────────────────
 //
@@ -182,6 +183,35 @@ export function fileHistoryStore(dir: string, secret: string): HistoryStore {
       if (current !== etag) throw new ConflictError();
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(f, sealHistory(doc, secret), "utf8");
+    },
+  };
+}
+
+// ── Daily grading quota: one small versioned document per user ─
+
+export function blobQuotaStore(secret: string): QuotaStore {
+  return {
+    async take(userId, day, limit) {
+      const doc = versionedDoc(quotaPathname(secret, userId));
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const { text, version } = await doc.read();
+        let state: { day: string; count: number } = { day, count: 0 };
+        try {
+          const parsed = text ? JSON.parse(text) : null;
+          if (parsed && parsed.day === day) state = { day, count: Number(parsed.count) || 0 };
+        } catch {
+          // A broken counter starts the day again.
+        }
+        if (state.count >= limit) return false;
+        try {
+          await doc.write(JSON.stringify({ day, count: state.count + 1 }), version);
+          return true;
+        } catch (err) {
+          if (err instanceof ConflictError) continue;
+          throw err;
+        }
+      }
+      throw new ConflictError();
     },
   };
 }

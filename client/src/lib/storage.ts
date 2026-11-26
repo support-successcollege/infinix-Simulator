@@ -33,6 +33,8 @@ export const STORAGE_KEYS = {
   examDraft: "ic_exam_draft_v1",
   /** Exam dates the student set, per user and arena. */
   examDates: "ic_exam_dates_v1",
+  /** A full open-question exam (מקצועית ב׳) in progress. */
+  openExamDraft: "ic_open_exam_draft_v1",
 } as const;
 
 function getStore(): Storage | null {

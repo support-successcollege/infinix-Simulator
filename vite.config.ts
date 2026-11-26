@@ -8,6 +8,7 @@ import { defineConfig, loadEnv, type Plugin, type ViteDevServer } from "vite";
 import { createAuthService } from "./api/_lib/userAuth";
 import { fileHistoryStore, fileStore } from "./api/_lib/userStores";
 import { createHistoryService } from "./api/_lib/history";
+import { createGradeService, memoryQuota, openQuestionsOf, type Grader } from "./api/_lib/grading";
 
 function normalizeBasePath(raw?: string): string {
   const value = (raw || "").trim();
@@ -171,6 +172,47 @@ function localAuthPlugin(env: Record<string, string>): Plugin {
           auth.currentUser
         );
         const out = await history.handle({ method: req.method || "GET", body, authorization: req.headers.authorization });
+        res.statusCode = out.status;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify(out.body));
+      });
+
+      // Dev stand-in for `api/grade.ts`. No API key locally, so a stub
+      // grader gives half of each criterion to any answer of some length;
+      // enough to exercise the screens, not a grade.
+      const quota = memoryQuota();
+      const stubGrader: Grader = async (question, answers) =>
+        question.parts.map(part => ({
+          label: part.label,
+          score: 0,
+          max: part.points,
+          feedback: "בדיקה מקומית לבדיקת המסכים בלבד, לא ציון אמיתי.",
+          criteria: part.rubric.map((r, index) => ({
+            index,
+            awarded: (answers[part.label] || "").length > 40 ? r.points / 2 : 0,
+            max: r.points,
+            note: "",
+          })),
+        }));
+      server.middlewares.use("/api/grade", async (req, res) => {
+        let raw = "";
+        for await (const chunk of req) raw += chunk;
+        let body: unknown = undefined;
+        try {
+          body = raw ? JSON.parse(raw) : undefined;
+        } catch {
+          body = undefined;
+        }
+        const auth = createAuthService(fileStore(filePath, secret), { ...env, AUTH_SECRET: secret });
+        const bankPath = path.resolve(import.meta.dirname, ".local-question-bank.json");
+        const service = createGradeService({
+          currentUser: auth.currentUser,
+          findQuestion: async id =>
+            fs.existsSync(bankPath) ? openQuestionsOf(JSON.parse(fs.readFileSync(bankPath, "utf8"))).get(id) ?? null : null,
+          grader: stubGrader,
+          quota,
+        });
+        const out = await service.handle({ method: req.method || "POST", body, authorization: req.headers.authorization });
         res.statusCode = out.status;
         res.setHeader("Content-Type", "application/json; charset=utf-8");
         res.end(JSON.stringify(out.body));

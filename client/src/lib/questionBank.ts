@@ -303,6 +303,20 @@ export function buildFacets(questions: Question[]): {
   };
 }
 
+/** The open (written-answer) questions a trainee can be served. */
+export function openQuestionsIn(entries: QuestionBankEntry[] | undefined): QuestionBankEntry[] {
+  if (!Array.isArray(entries)) return [];
+  return entries.filter(
+    q =>
+      q.type === "open" &&
+      !!q.id &&
+      q.status !== "archived" &&
+      q.status !== "draft" &&
+      Array.isArray(q.parts) &&
+      q.parts.length > 0
+  );
+}
+
 /** Derive the arena list shown in the wizard from a loaded bank. */
 export function buildArenas(bank: QuestionBankData | null): Arena[] {
   const cats = bank?.categories;
@@ -312,12 +326,14 @@ export function buildArenas(bank: QuestionBankData | null): Arena[] {
     .map((name, idx) => {
       const meta = cats[name];
       const questions = Array.isArray(meta?.questions) ? meta.questions : [];
+      const open = openQuestionsIn(questions).length;
       return {
         id: `arena-${idx + 1}`,
         name,
         icon: meta?.icon || "🎯",
+        ...(open > 0 ? { kind: "open" as const } : {}),
         // Count only what a trainee can actually be served.
-        questionCount: toQuizQuestions(questions, name).length,
+        questionCount: open > 0 ? open : toQuizQuestions(questions, name).length,
         category: meta?.product || "זירת מכירה",
         summary: buildArenaSummary(meta),
       };

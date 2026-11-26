@@ -41,6 +41,8 @@ const FORMATS: Record<string, ExamFormat> = {
   [key("ביטוח רכוש")]: INSURANCE_EXAM,
   [key("ביטוח תאונות")]: INSURANCE_EXAM,
   [key("גמר פנסיוני")]: INSURANCE_EXAM,
+  // Open questions, one full past sitting; the ISA has not changed its length or pass mark.
+  [key("מקצועית ב")]: { questions: 0, minutes: 150, pass: 60, calculator: true, formulaSheet: true },
 };
 
 /** An arena with no published format gets the ISA shape. */

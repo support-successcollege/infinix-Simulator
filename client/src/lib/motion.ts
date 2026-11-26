@@ -56,6 +56,7 @@ const SCREEN_DEPTH: Record<string, number> = {
   settings: 1,
   quiz: 2,
   exam: 2,
+  open: 2,
   results: 3,
 };
 

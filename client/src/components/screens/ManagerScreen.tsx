@@ -580,7 +580,26 @@ function ContentTab({
             </div>
 
             <div className="rounded-xl p-3" style={{ background: "var(--background)", border: "1px solid var(--tf-border)" }}>
-              {draft ? (
+              {draft?.type === "open" ? (
+                <OpenEntryPanel
+                  entry={draft}
+                  onApprove={() =>
+                    writeBank(copy => {
+                      const q = copy.categories?.[selectedCategory]?.questions?.[selectedQuestionIndex];
+                      if (!q) return;
+                      q.explanationStatus = "approved";
+                      q.status = "active";
+                      q.parts = (q.parts || []).map(p => ({ ...p, aiFlag: null, aiNote: "" }));
+                    })
+                  }
+                  onToggleHidden={() =>
+                    writeBank(copy => {
+                      const q = copy.categories?.[selectedCategory]?.questions?.[selectedQuestionIndex];
+                      if (q) q.status = q.status === "draft" ? "active" : "draft";
+                    })
+                  }
+                />
+              ) : draft ? (
                 <div className="flex flex-col gap-2">
                   <label className="text-xs" style={{ color: "var(--muted-foreground)" }}>נוסח שאלה</label>
                   <textarea className="tf-input min-h-[88px]" value={draft.question || ""} onChange={e => setDraft({ ...draft, question: e.target.value })} />
@@ -921,6 +940,49 @@ function MemberArenas({ member, allNames, onSave }: {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** An open question (מקצועית ב׳): read the case, the model answers and the rubric; approve or hide it. */
+function OpenEntryPanel({ entry, onApprove, onToggleHidden }: { entry: QuestionBankEntry; onApprove: () => void; onToggleHidden: () => void }) {
+  const flagged = (entry.parts || []).filter(p => p.aiFlag);
+  return (
+    <div className="flex flex-col gap-3 text-sm">
+      <div className="flex items-center gap-2 flex-wrap text-xs font-bold">
+        <span>שאלה פתוחה{entry.examLabel ? ` · ${entry.examLabel}` : ""}</span>
+        <span style={{ color: entry.explanationStatus === "approved" ? "var(--success)" : "var(--warning)" }}>
+          {entry.explanationStatus === "approved" ? "התשובות לדוגמה אושרו" : "תשובות לדוגמה ממתינות לאישור"}
+        </span>
+        {entry.status === "draft" && <span style={{ color: "var(--destructive)" }}>מוסתרת מהתרגול</span>}
+      </div>
+      {flagged.length > 0 && (
+        <div className="p-3 rounded-lg text-xs" style={{ background: "var(--tint-danger-weak)" }}>
+          {flagged.map(p => (
+            <div key={p.label}>⚑ סעיף {p.label || "יחיד"}: {p.aiNote}</div>
+          ))}
+        </div>
+      )}
+      <p style={{ whiteSpace: "pre-wrap" }}>{entry.question}</p>
+      {(entry.parts || []).map(p => (
+        <div key={p.label} className="rounded-lg p-3" style={{ border: "1px solid var(--tf-border)" }}>
+          <div className="font-bold mb-1">סעיף {p.label || "יחיד"} · {p.points} נק׳</div>
+          <p className="mb-2" style={{ whiteSpace: "pre-wrap" }}>{p.prompt}</p>
+          <div className="text-xs font-bold" style={{ color: "var(--muted-foreground)" }}>תשובה לדוגמה</div>
+          <p className="mb-2" style={{ whiteSpace: "pre-wrap" }}>{p.modelAnswer}</p>
+          <div className="text-xs font-bold" style={{ color: "var(--muted-foreground)" }}>מחוון</div>
+          <ul className="text-xs">
+            {(p.rubric || []).map((r, i) => <li key={i}>({r.points}) {r.criterion}</li>)}
+          </ul>
+        </div>
+      ))}
+      <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+        תיקון נוסח של שאלה פתוחה נעשה כרגע בקובץ המאגר. אחרי אישור או הסתרה, פרסמו את המאגר.
+      </p>
+      <div className="flex gap-2">
+        <button onClick={onApprove} className="btn-primary text-sm">אשר תשובות לדוגמה</button>
+        <button onClick={onToggleHidden} className="btn-secondary text-sm">{entry.status === "draft" ? "החזר לתרגול" : "הסתר מהתרגול"}</button>
+      </div>
     </div>
   );
 }

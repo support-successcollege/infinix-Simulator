@@ -90,6 +90,8 @@ export function toStoredSession(raw: unknown): StoredSession | null {
       selectedIndex: Number.isInteger(x.selectedIndex) ? Number(x.selectedIndex) : -1,
       isCorrect: x.isCorrect === true,
       timeSpent: Math.max(0, Math.min(36_000, Number(x.timeSpent) || 0)),
+      ...(Number.isFinite(Number(x.score)) && x.score != null ? { score: Math.max(0, Math.min(100, Number(x.score))) } : {}),
+      ...(Number.isFinite(Number(x.max)) && x.max != null ? { max: Math.max(0, Math.min(100, Number(x.max))) } : {}),
     };
   });
   const endTime = s.endTime && !Number.isNaN(Date.parse(String(s.endTime))) ? String(s.endTime) : undefined;

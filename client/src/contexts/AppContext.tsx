@@ -40,6 +40,7 @@ import type {
   QuestionFilters,
   QuizAnswer,
   QuizSession,
+  OpenRun,
   Screen,
   TrainingConfig,
   User,
@@ -332,6 +333,13 @@ interface AppContextValue {
   resumeExam: () => boolean;
   /** Hand in a full exam: the chosen option and seconds spent per question. */
   submitExam: (selections: number[], spent: number[]) => void;
+  /** Open questions (מקצועית ב׳): the run on screen, if any. */
+  openRun: OpenRun | null;
+  startOpen: (run: Omit<OpenRun, "id" | "startTime"> & Partial<Pick<OpenRun, "id" | "startTime">>) => void;
+  /** Keep a finished session in history (here and on the server) without leaving the screen. */
+  recordSession: (session: QuizSession) => void;
+  /** The session token, for calls such as grading. */
+  authToken: string;
   submitAnswer: (selectedIndex: number, timeSpent: number) => void;
   nextQuestion: () => void;
   currentQuestionIndex: number;
@@ -377,6 +385,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const [currentSession, setCurrentSession] = useState<QuizSession | null>(null);
+  const [openRun, setOpenRun] = useState<OpenRun | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [lastAnswer, setLastAnswer] = useState<QuizAnswer | null>(null);
   const [isShowingFeedback, setIsShowingFeedback] = useState(false);
@@ -1035,6 +1044,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [currentSession, currentQuestionIndex]
   );
 
+  const recordSession = useCallback(
+    (finished: QuizSession) => {
+      setSessions(prev => [finished, ...prev.filter(p => p.id !== finished.id)]);
+      if (authToken && !finished.isDemo) {
+        fetch(HISTORY_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+          body: JSON.stringify({ session: toStored(finished) }),
+        }).catch(() => console.warn("[history] could not save the session to the server"));
+      }
+    },
+    [authToken]
+  );
+
+  const startOpen = useCallback((run: Omit<OpenRun, "id" | "startTime"> & Partial<Pick<OpenRun, "id" | "startTime">>) => {
+    // A run passed back with its id (an exam resumed from its draft) keeps it.
+    setOpenRun({ ...run, id: run.id || `s-${crypto.randomUUID()}`, startTime: run.startTime || new Date().toISOString() });
+    setCurrentScreen("open");
+  }, []);
+
   /** Record a finished session here and on the server, and show its results. */
   const completeSession = useCallback(
     (finished: QuizSession) => {
@@ -1201,6 +1230,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       startExam,
       resumeExam,
       submitExam,
+      openRun,
+      startOpen,
+      recordSession,
+      authToken,
       submitAnswer,
       nextQuestion,
       currentQuestionIndex,
@@ -1255,6 +1288,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       startExam,
       resumeExam,
       submitExam,
+      openRun,
+      startOpen,
+      recordSession,
+      authToken,
       submitAnswer,
       nextQuestion,
       currentQuestionIndex,

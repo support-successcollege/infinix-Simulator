@@ -7,7 +7,7 @@
    question with the same clock. One draft per user.
    ============================================================ */
 
-import type { QuizSession } from "@/types/app";
+import type { OpenRun, QuizSession } from "@/types/app";
 import { STORAGE_KEYS, readJson, removeKey, writeJson } from "@/lib/storage";
 import type { YearScope } from "@/lib/exam";
 
@@ -54,4 +54,30 @@ export function saveExamDate(userId: string, arenaName: string, date: string): v
   if (date) mine[arenaName] = date;
   else delete mine[arenaName];
   writeJson(STORAGE_KEYS.examDates, { ...all, [userId]: mine });
+}
+
+// ── Open-question exam (מקצועית ב׳) in progress ────────────────
+
+export interface OpenExamDraft {
+  userId: string;
+  run: OpenRun;
+  /** questionId -> part label -> text */
+  answers: Record<string, Record<string, string>>;
+  current: number;
+  deadline: number;
+}
+
+export function readOpenDraft(userId: string | undefined): OpenExamDraft | null {
+  if (!userId) return null;
+  const draft = readJson<OpenExamDraft | null>(STORAGE_KEYS.openExamDraft, null);
+  if (!draft || draft.userId !== userId || !draft.run?.questionIds?.length) return null;
+  return draft;
+}
+
+export function saveOpenDraft(draft: OpenExamDraft): void {
+  writeJson(STORAGE_KEYS.openExamDraft, draft);
+}
+
+export function clearOpenDraft(): void {
+  removeKey(STORAGE_KEYS.openExamDraft);
 }

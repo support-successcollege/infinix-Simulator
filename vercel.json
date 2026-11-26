@@ -7,6 +7,9 @@
   "functions": {
     "api/question-bank.ts": {
       "maxDuration": 15
+    },
+    "api/grade.ts": {
+      "maxDuration": 120
     }
   },
   "rewrites": [

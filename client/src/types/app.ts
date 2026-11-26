@@ -5,7 +5,18 @@
    tests) can import types without pulling in React.
    ============================================================ */
 
-export type Screen = "hub" | "wizard" | "quiz" | "exam" | "results" | "profile" | "manager" | "settings";
+export type Screen = "hub" | "wizard" | "quiz" | "exam" | "open" | "results" | "profile" | "manager" | "settings";
+
+/** A run of open questions: practice one by one, or a full past sitting against the clock. */
+export interface OpenRun {
+  id: string;
+  mode: "practice" | "exam";
+  arenaName: string;
+  questionIds: string[];
+  /** The sitting, for a full exam ("מקצועית ב׳ · קיץ 2026"). */
+  examLabel?: string;
+  startTime: string;
+}
 
 export type TrainingMode = "full" | "quick" | "mistakes" | "exam";
 
@@ -60,6 +71,8 @@ export interface Question {
 export interface Arena {
   id: string;
   name: string;
+  /** "open": written answers graded by AI (מקצועית ב׳), not multiple choice. */
+  kind?: "open";
   icon: string;
   questionCount: number;
   category: string;
@@ -72,6 +85,9 @@ export interface QuizAnswer {
   selectedIndex: number;
   isCorrect: boolean;
   timeSpent: number;
+  /** Open questions: points awarded and available for this part. */
+  score?: number;
+  max?: number;
 }
 
 export interface QuizSession {
@@ -109,8 +125,22 @@ export interface QuestionAppearance {
   number?: number;
 }
 
+/** One graded part of an open question. */
+export interface OpenPartEntry {
+  label: string;
+  prompt: string;
+  points: number;
+  modelAnswer: string;
+  rubric: { points: number; criterion: string }[];
+  aiFlag?: string | null;
+  aiNote?: string;
+}
+
 export interface QuestionBankEntry {
   id?: string;
+  /** "open": a case with written parts, graded by AI against a rubric. */
+  type?: "open";
+  parts?: OpenPartEntry[];
   question?: string;
   options?: string[];
   correctIndex?: number;

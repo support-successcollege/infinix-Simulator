@@ -18,6 +18,7 @@ import HubScreen from "@/components/screens/HubScreen";
 import WizardScreen from "@/components/screens/WizardScreen";
 import QuizScreen from "@/components/screens/QuizScreen";
 import ExamScreen from "@/components/screens/ExamScreen";
+import OpenScreen from "@/components/screens/OpenScreen";
 import ResultsScreen from "@/components/screens/ResultsScreen";
 import ProfileScreen from "@/components/screens/ProfileScreen";
 import ManagerScreen from "@/components/screens/ManagerScreen";
@@ -54,6 +55,7 @@ export default function MainApp() {
       case "wizard": return <WizardScreen />;
       case "quiz": return <QuizScreen />;
       case "exam": return <ExamScreen />;
+      case "open": return <OpenScreen />;
       case "results": return <ResultsScreen />;
       case "profile": return <ProfileScreen />;
       case "manager": return <ManagerScreen />;
@@ -65,7 +67,7 @@ export default function MainApp() {
   // The quiz takes the full viewport — the sidebar is navigation
   // away from a timed task, and it does not belong on screen while
   // one is running.
-  const isFullscreen = currentScreen === "quiz" || currentScreen === "exam";
+  const isFullscreen = currentScreen === "quiz" || currentScreen === "exam" || currentScreen === "open";
 
   // Going deeper: the new screen enters from the leading edge, the
   // old one leaves toward the trailing edge. Going back mirrors it.
