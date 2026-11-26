@@ -27,12 +27,9 @@
      VITE_ADMIN_EMAIL / VITE_ADMIN_PASSWORD   support admin, must change
                                               the password on first use
      MANAGER_EMAIL / MANAGER_PASSWORD         a manager for the college
-     VITE_STUDENT_EMAIL / VITE_STUDENT_PASSWORD  the shared student login
-   An admin or manager seed becomes a stored account the first time it
-   signs in, and from then on the stored account wins. The shared
-   student login is never stored: one student changing its password
-   would lock out every other student, so it is always checked against
-   the environment and cannot be changed from the app.
+   A seed becomes a stored account the first time it signs in, and from
+   then on the stored account wins. There is no shared student login:
+   every student has an account of their own.
 
    Everything here is pure apart from the injected store, so the same
    code serves the Vercel function, the Vite dev server and the tests.
@@ -76,8 +73,6 @@ export interface PublicUser {
   role: Role;
   createdAt: string;
   mustChangePassword: boolean;
-  /** The shared student login: listed, but not editable from the app. */
-  shared?: boolean;
 }
 
 export interface StoreAdapter {
@@ -99,8 +94,6 @@ export interface AuthEnv {
   VITE_ADMIN_PASSWORD?: string;
   MANAGER_EMAIL?: string;
   MANAGER_PASSWORD?: string;
-  VITE_STUDENT_EMAIL?: string;
-  VITE_STUDENT_PASSWORD?: string;
 }
 
 export interface AuthRequest {
@@ -233,7 +226,6 @@ interface Seed {
   password: string;
   role: Role;
   mustChangePassword: boolean;
-  shared: boolean;
 }
 
 export function seedsFromEnv(env: AuthEnv): Seed[] {
@@ -252,7 +244,6 @@ export function seedsFromEnv(env: AuthEnv): Seed[] {
     password: env.VITE_ADMIN_PASSWORD,
     role: "manager",
     mustChangePassword: true,
-    shared: false,
   });
   add({
     id: "u-manager",
@@ -261,22 +252,8 @@ export function seedsFromEnv(env: AuthEnv): Seed[] {
     password: env.MANAGER_PASSWORD,
     role: "manager",
     mustChangePassword: false,
-    shared: false,
-  });
-  add({
-    id: "u-trainee",
-    name: "מתאמן",
-    email: env.VITE_STUDENT_EMAIL,
-    password: env.VITE_STUDENT_PASSWORD,
-    role: "trainee",
-    mustChangePassword: false,
-    shared: true,
   });
   return seeds;
-}
-
-function sharedSeeds(env: AuthEnv): Seed[] {
-  return seedsFromEnv(env).filter(s => s.shared);
 }
 
 function toPublic(u: StoredUser): PublicUser {
@@ -287,18 +264,6 @@ function toPublic(u: StoredUser): PublicUser {
     role: u.role,
     createdAt: u.createdAt,
     mustChangePassword: !!u.mustChangePassword,
-  };
-}
-
-function seedToPublic(s: Seed): PublicUser {
-  return {
-    id: s.id,
-    name: s.name,
-    email: s.email,
-    role: s.role,
-    createdAt: "",
-    mustChangePassword: false,
-    shared: true,
   };
 }
 
@@ -337,14 +302,11 @@ export function createAuthService(store: StoreAdapter, env: AuthEnv, now: () => 
   /** The signed-in user behind a request, or null. */
   async function whoIs(
     authorization?: string
-  ): Promise<{ stored?: StoredUser; seed?: Seed; user: PublicUser } | null> {
+  ): Promise<{ stored: StoredUser; user: PublicUser } | null> {
     const raw = String(authorization || "");
     const token = raw.startsWith("Bearer ") ? raw.slice(7) : "";
     const payload = readToken(token, secret, now());
     if (!payload) return null;
-
-    const seed = sharedSeeds(env).find(s => s.id === payload.sub);
-    if (seed) return { seed, user: seedToPublic(seed) };
 
     const { doc } = await store.read();
     const stored = doc.users.find(u => u.id === payload.sub);
@@ -374,10 +336,6 @@ export function createAuthService(store: StoreAdapter, env: AuthEnv, now: () => 
       return fail(401, GENERIC_LOGIN_ERROR);
     }
 
-    if (seed.shared) {
-      return ok({ token: issue({ id: seed.id, role: seed.role }), user: seedToPublic(seed) });
-    }
-
     // First sign-in of an admin or manager seed: it becomes a stored account.
     const { salt, hash } = await hashPassword(password);
     const created = await mutate(d => {
@@ -403,12 +361,11 @@ export function createAuthService(store: StoreAdapter, env: AuthEnv, now: () => 
   async function changeOwnPassword(req: AuthRequest): Promise<AuthResponse> {
     const who = await whoIs(req.authorization);
     if (!who) return fail(401, "יש להתחבר מחדש");
-    if (who.seed) return fail(403, "את הסיסמה של משתמש הסטודנטים המשותף משנים רק בהגדרות השרת");
 
     const input = (req.body || {}) as { currentPassword?: unknown; newPassword?: unknown };
     const current = String(input.currentPassword || "");
     const next = String(input.newPassword || "");
-    const stored = who.stored!;
+    const stored = who.stored;
     if (!(await verifyPassword(current, stored.salt, stored.hash))) {
       return fail(400, "הסיסמה הנוכחית שגויה");
     }
@@ -439,11 +396,7 @@ export function createAuthService(store: StoreAdapter, env: AuthEnv, now: () => 
 
   async function listUsers(): Promise<PublicUser[]> {
     const { doc } = await store.read();
-    const stored = doc.users.map(toPublic);
-    const shared = sharedSeeds(env)
-      .filter(s => !stored.some(u => u.email === s.email))
-      .map(seedToPublic);
-    return [...stored, ...shared].sort((a, b) => a.name.localeCompare(b.name, "he"));
+    return doc.users.map(toPublic).sort((a, b) => a.name.localeCompare(b.name, "he"));
   }
 
   async function createUser(body: unknown): Promise<AuthResponse> {
@@ -455,9 +408,6 @@ export function createAuthService(store: StoreAdapter, env: AuthEnv, now: () => 
     if (!isEmail(email)) return fail(400, "כתובת המייל אינה תקינה");
     const weakness = passwordWeakness(password);
     if (weakness) return fail(400, weakness);
-    if (seedsFromEnv(env).some(s => s.shared && s.email === email)) {
-      return fail(409, "המייל הזה שמור למשתמש הסטודנטים המשותף");
-    }
 
     const { salt, hash } = await hashPassword(password);
     const created = await mutate(d => {

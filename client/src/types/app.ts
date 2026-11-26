@@ -173,6 +173,4 @@ export interface AuthUserAccount {
 
 /** The subset of an account that is safe to expose to the UI. */
 export type PublicAuthUser = Pick<AuthUserAccount, "id" | "name" | "email" | "role"> & {
-  /** The shared student login: set in the server environment, not editable here. */
-  shared?: boolean;
 };

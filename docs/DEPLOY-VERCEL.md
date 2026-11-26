@@ -45,8 +45,6 @@ Project → Settings → Environment Variables. הגדר לשלוש הסביבו
 |---|---|---|
 | `VITE_ADMIN_EMAIL` | המייל של המנהל | חשבון המנהל |
 | `VITE_ADMIN_PASSWORD` | סיסמה זמנית חזקה | מוחלפת בכפייה בכניסה הראשונה בכל דפדפן |
-| `VITE_STUDENT_EMAIL` | למשל `student@infinix.org.il` | כניסת תלמידים. השאר ריק כדי לבטל |
-| `VITE_STUDENT_PASSWORD` | סיסמה משותפת לתלמידים | לא נדרשת החלפה |
 | `ADMIN_UPLOAD_TOKEN` | `openssl rand -base64 32` | מרשה פרסום מאגר |
 
 **אל תגדיר** `VITE_BASE_PATH` — הוא נועד לתת-נתיב של GitHub Pages ויישבור

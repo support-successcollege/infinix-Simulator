@@ -16,8 +16,6 @@ const ENV: AuthEnv = {
   VITE_ADMIN_PASSWORD: "admin-seed-1",
   MANAGER_EMAIL: "boss@example.test",
   MANAGER_PASSWORD: "boss-seed-1",
-  VITE_STUDENT_EMAIL: "student@example.test",
-  VITE_STUDENT_PASSWORD: "student-seed-1",
 };
 
 function setup(env: AuthEnv = ENV) {
@@ -75,14 +73,12 @@ describe("auth service", () => {
     expect(unknown.out.body).toEqual(wrong.out.body);
   });
 
-  it("keeps the shared student login out of the store and unchangeable", async () => {
-    const { login, call, store } = setup();
-    const { out, token } = await login("student@example.test", "student-seed-1");
-    expect(out.status).toBe(200);
-    expect(store.doc.users).toHaveLength(0);
-    expect((await call("GET", "me", undefined, token)).status).toBe(200);
-    const change = await call("POST", "password", { currentPassword: "student-seed-1", newPassword: "other-pass-2" }, token);
-    expect(change.status).toBe(403);
+  it("has no shared student login, even if the old variables are still set", async () => {
+    const legacy = { ...ENV, VITE_STUDENT_EMAIL: "student@example.test", VITE_STUDENT_PASSWORD: "student-seed-1" } as AuthEnv;
+    const { login, call } = setup(legacy);
+    expect((await login("student@example.test", "student-seed-1")).out.status).toBe(401);
+    const old = signToken({ sub: "u-trainee", role: "trainee", pv: 0, exp: Date.now() + 60_000 }, SECRET);
+    expect((await call("GET", "me", undefined, old)).status).toBe(401);
   });
 
   it("lets a manager create a user who can then sign in", async () => {
@@ -95,12 +91,14 @@ describe("auth service", () => {
     expect((await login("dana@example.test", "dana-pass-1")).out.status).toBe(200);
     const list = await call("GET", "users", undefined, token);
     const emails = (list.body as { users: { email: string }[] }).users.map(u => u.email);
-    expect(emails).toEqual(expect.arrayContaining(["boss@example.test", "dana@example.test", "student@example.test"]));
+    expect([...emails].sort()).toEqual(["boss@example.test", "dana@example.test"]);
   });
 
   it("keeps user management away from trainees and strangers", async () => {
     const { login, call } = setup();
-    const { token } = await login("student@example.test", "student-seed-1");
+    const boss = await login("boss@example.test", "boss-seed-1");
+    await call("POST", "users", { name: "דנה", email: "dana@example.test", password: "dana-pass-1", role: "trainee" }, boss.token);
+    const { token } = await login("dana@example.test", "dana-pass-1");
     expect((await call("GET", "users", undefined, token)).status).toBe(403);
     expect((await call("GET", "users")).status).toBe(401);
     expect((await call("GET", "users", undefined, "garbage.token")).status).toBe(401);

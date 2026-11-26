@@ -104,7 +104,6 @@ interface ServerUser {
   role: UserRole;
   createdAt: string;
   mustChangePassword: boolean;
-  shared?: boolean;
 }
 
 // ── Shared question bank ───────────────────────────────────────
@@ -579,7 +578,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     const { users } = await authFetch<{ users: ServerUser[] }>("users", { token: authToken });
-    setAuthUsers(users.map(({ id, name, email, role, shared }) => ({ id, name, email, role, shared: !!shared })));
+    setAuthUsers(users.map(({ id, name, email, role }) => ({ id, name, email, role })));
   }, [authToken, user?.role]);
 
   useEffect(() => {
