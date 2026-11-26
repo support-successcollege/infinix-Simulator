@@ -361,14 +361,18 @@ export function createAuthService(store: StoreAdapter, env: AuthEnv, now: () => 
 
   /** Read, change, write; retried when another write got there first. */
   async function mutate<T>(change: (doc: UserDoc) => T): Promise<T> {
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const { doc, etag } = await store.read();
-      const copy: UserDoc = JSON.parse(JSON.stringify(doc));
-      const result = change(copy);
+    for (let attempt = 0; attempt < 6; attempt++) {
+      // A short, random pause before a retry, so two writers that collided
+      // do not collide again on the next round.
+      if (attempt) await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 150 * attempt));
       try {
+        const { doc, etag } = await store.read();
+        const copy: UserDoc = JSON.parse(JSON.stringify(doc));
+        const result = change(copy);
         await store.write(copy, etag);
         return result;
       } catch (err) {
+        // A conflict on the read (a version pruned mid-read) is retried too.
         if (err instanceof ConflictError) continue;
         throw err;
       }

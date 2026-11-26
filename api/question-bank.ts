@@ -28,10 +28,10 @@
    ============================================================ */
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { del, list, put } from "@vercel/blob";
+import { del, get, list, put } from "@vercel/blob";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { createAuthService, type AuthEnv } from "./_lib/userAuth.js";
-import { blobStore, readFresh } from "./_lib/userStores.js";
+import { blobStore } from "./_lib/userStores.js";
 
 /** Current pathname: the gzipped bank JSON. */
 const BLOB_PATHNAME = "question-bank/current.json.gz";
@@ -101,10 +101,12 @@ async function isAuthorized(req: VercelRequest): Promise<boolean> {
 }
 
 async function readBlob(pathname: string): Promise<{ bytes: Buffer; uploadedAt: Date } | null> {
-  // Not get(): for a public blob it reads through the CDN cache, which kept
-  // serving the bank from before a publish.
-  const result = await readFresh(pathname);
-  return result && { bytes: result.bytes, uploadedAt: result.uploadedAt };
+  // Through the CDN: the bank is published with a 60-second cache, so a new
+  // bank reaches students within a minute.
+  const result = await get(pathname, { access: "public" });
+  if (!result || result.statusCode !== 200) return null;
+  const bytes = Buffer.from(await new Response(result.stream).arrayBuffer());
+  return { bytes, uploadedAt: result.blob.uploadedAt };
 }
 
 /** Deletes the blobs at exactly these pathnames. */
