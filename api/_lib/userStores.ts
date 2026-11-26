@@ -3,7 +3,7 @@
    encrypted text, so a dev file is as unreadable as the real one. */
 
 import fs from "node:fs";
-import { BlobPreconditionFailedError, get, put } from "@vercel/blob";
+import { BlobNotFoundError, BlobPreconditionFailedError, head, put } from "@vercel/blob";
 import {
   ConflictError,
   EMPTY_DOC,
@@ -15,16 +15,53 @@ import {
 } from "./userAuth.js";
 import { EMPTY_HISTORY, historyPathname, openHistory, sealHistory, type HistoryStore } from "./history.js";
 
+// ── Reading a public blob as it is now ────────────────────────
+//
+// A public blob is served through the CDN, and `get(..., { useCache: false })`
+// only bypasses that cache for private blobs. Reading through it handed back a
+// copy from before the last write, with that copy's ETag, so every guarded
+// write that followed was refused as a conflict ("עדכון המשתמשים נכשל").
+// `head()` asks the Blob API, which is not cached, for the current ETag; the
+// content is then fetched at a URL no one has asked for before, and checked
+// against that ETag before it is trusted.
+
+const bareEtag = (etag: string | null | undefined) => String(etag || "").replace(/^W\//, "").replace(/"/g, "");
+
+export async function readFresh(
+  pathname: string
+): Promise<{ bytes: Buffer; etag: string; uploadedAt: Date } | null> {
+  let meta;
+  try {
+    meta = await head(pathname);
+  } catch (err) {
+    if (err instanceof BlobNotFoundError) return null;
+    throw err;
+  }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const url = new URL(meta.url);
+    url.searchParams.set("v", bareEtag(meta.etag));
+    if (attempt) url.searchParams.set("r", Math.random().toString(36).slice(2));
+    const res = await fetch(url, { cache: "no-store" });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`blob read failed: ${res.status}`);
+    const served = res.headers.get("etag");
+    if (served && bareEtag(served) !== bareEtag(meta.etag)) continue;
+    return { bytes: Buffer.from(await res.arrayBuffer()), etag: meta.etag, uploadedAt: meta.uploadedAt };
+  }
+  // The CDN kept serving another version. Writing over what was read would
+  // lose whatever changed since, so give up and let the caller retry.
+  throw new ConflictError();
+}
+
 export function blobStore(secret: string): StoreAdapter {
   const pathname = storePathname(secret);
   return {
     async read() {
-      // useCache: false reads origin storage, so a user created a
-      // moment ago is already there on the next request.
-      const result = await get(pathname, { access: "public", useCache: false });
-      if (!result || result.statusCode !== 200) return { doc: EMPTY_DOC, etag: null };
-      const text = await new Response(result.stream).text();
-      return { doc: decryptDoc(text, secret), etag: result.blob.etag };
+      // Read as it is now, so a user created a moment ago is already
+      // there on the next request and the ETag guards the next write.
+      const result = await readFresh(pathname);
+      if (!result) return { doc: EMPTY_DOC, etag: null };
+      return { doc: decryptDoc(result.bytes.toString("utf8"), secret), etag: result.etag };
     },
     async write(doc: UserDoc, etag: string | null) {
       try {
@@ -67,10 +104,9 @@ export function fileStore(filePath: string, secret: string): StoreAdapter {
 export function blobHistoryStore(secret: string): HistoryStore {
   return {
     async read(userId) {
-      const result = await get(historyPathname(secret, userId), { access: "public", useCache: false });
-      if (!result || result.statusCode !== 200) return { doc: EMPTY_HISTORY, etag: null };
-      const text = await new Response(result.stream).text();
-      return { doc: openHistory(text, secret), etag: result.blob.etag };
+      const result = await readFresh(historyPathname(secret, userId));
+      if (!result) return { doc: EMPTY_HISTORY, etag: null };
+      return { doc: openHistory(result.bytes.toString("utf8"), secret), etag: result.etag };
     },
     async write(userId, doc, etag) {
       try {
