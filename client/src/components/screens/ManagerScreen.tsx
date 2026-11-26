@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEventHandler, type RefObject } from "react";
 import { useApp, type QuestionBankData, type QuestionBankEntry } from "@/contexts/AppContext";
-import { Users, BarChart2, BookOpen, TrendingUp, Award, Clock, Search, Shield, ShieldAlert, Upload, Download, Trash2, Save, PlusCircle } from "lucide-react";
+import { Users, BarChart2, BookOpen, TrendingUp, Award, Clock, Search, Shield, ShieldAlert, Upload, Download, Trash2, Save, PlusCircle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
 type Tab = "team" | "reports" | "content";
@@ -354,6 +354,12 @@ function ContentTab({
 
   const selectedQuestions = (questionBankData?.categories?.[selectedCategory]?.questions || []) as QuestionBankEntry[];
   const selectedQuestion = selectedQuestions[selectedQuestionIndex] || null;
+  // The manager approves AI-drafted explanations; this narrows the list to them.
+  const [pendingOnly, setPendingOnly] = useState(false);
+  const pendingCount = selectedQuestions.filter(q => q.explanationStatus === "pending").length;
+  const listed = selectedQuestions
+    .map((q, idx) => ({ q, idx }))
+    .filter(({ q }) => !pendingOnly || q.explanationStatus === "pending");
 
   useEffect(() => {
     if (!selectedQuestion) {
@@ -362,7 +368,7 @@ function ContentTab({
     }
     setDraft({
       ...selectedQuestion,
-      options: Array.isArray(selectedQuestion.options) ? selectedQuestion.options.slice(0, 4) : ["", "", "", ""],
+      options: Array.isArray(selectedQuestion.options) && selectedQuestion.options.length ? [...selectedQuestion.options] : ["", "", "", ""],
     });
   }, [selectedQuestion, selectedCategory, selectedQuestionIndex]);
 
@@ -406,7 +412,7 @@ function ContentTab({
     toast.success("השאלה נמחקה");
   };
 
-  const saveDraft = () => {
+  const saveDraft = ({ approve = false }: { approve?: boolean } = {}) => {
     if (!selectedCategory || !draft) return;
     const options = (draft.options || []).map(o => String(o || "").trim()).filter(Boolean);
     if (!draft.question || options.length < 2) {
@@ -423,9 +429,12 @@ function ContentTab({
         options,
         correctIndex: safeCorrect,
         status: draft.status || "active",
+        ...(approve ? { explanationStatus: "approved" as const, aiFlag: undefined, aiNote: undefined } : {}),
       };
     });
-    toast.success("השאלה נשמרה. כדי שהתלמידים יראו אותה, לחץ \"פרסם את המאגר שמוצג\"");
+    toast.success(approve
+      ? "ההסבר אושר. כדי שהתלמידים יראו את השינוי, לחץ \"פרסם את המאגר שמוצג\""
+      : "השאלה נשמרה. כדי שהתלמידים יראו אותה, לחץ \"פרסם את המאגר שמוצג\"");
   };
 
   const exportJson = () => {
@@ -499,6 +508,20 @@ function ContentTab({
               <div className="text-xs font-bold mb-2" style={{ color: "var(--muted-foreground)" }}>
                 שאלות ({selectedQuestions.length})
               </div>
+              {pendingCount > 0 && (
+                <label className="flex items-center gap-2 text-xs font-bold mb-2" style={{ color: "var(--foreground)" }}>
+                  <input
+                    type="checkbox"
+                    checked={pendingOnly}
+                    onChange={e => {
+                      setPendingOnly(e.target.checked);
+                      const first = selectedQuestions.findIndex(q => q.explanationStatus === "pending");
+                      if (e.target.checked && first >= 0) setSelectedQuestionIndex(first);
+                    }}
+                  />
+                  רק הסברים לאישור ({pendingCount})
+                </label>
+              )}
               <div className="flex gap-1 mb-2">
                 <button onClick={handleDeleteCategory} className="px-2 py-1 rounded-lg text-[11px] font-bold" style={{ background: "var(--tint-danger-weak)", color: "var(--destructive)" }}>
                   מחק קטגוריה
@@ -508,7 +531,7 @@ function ContentTab({
                 </button>
               </div>
               <div className="flex flex-col gap-1">
-                {selectedQuestions.map((q, idx) => (
+                {listed.map(({ q, idx }) => (
                   <button
                     key={q.id || idx}
                     onClick={() => setSelectedQuestionIndex(idx)}
@@ -519,6 +542,11 @@ function ContentTab({
                       border: "1px solid var(--tf-border)",
                     }}
                   >
+                    {q.explanationStatus === "pending" && (
+                      <span className="font-bold" style={{ color: idx === selectedQuestionIndex ? "inherit" : "var(--warning)" }}>
+                        {q.aiFlag ? "⚑ " : "● "}
+                      </span>
+                    )}
                     {(q.question || `שאלה ${idx + 1}`).slice(0, 70)}
                   </button>
                 ))}
@@ -550,7 +578,7 @@ function ContentTab({
                     <label className="text-xs" style={{ color: "var(--muted-foreground)" }}>
                       תשובה נכונה
                       <select className="tf-input mt-1" value={Number(draft.correctIndex) || 0} onChange={e => setDraft({ ...draft, correctIndex: Number(e.target.value) })}>
-                        {[0, 1, 2, 3].map(v => <option key={v} value={v}>{`אפשרות ${v + 1}`}</option>)}
+                        {(draft.options || []).map((_, v) => <option key={v} value={v}>{`אפשרות ${v + 1}`}</option>)}
                       </select>
                     </label>
                     <label className="text-xs" style={{ color: "var(--muted-foreground)" }}>
@@ -564,14 +592,29 @@ function ContentTab({
                   </div>
 
                   <label className="text-xs" style={{ color: "var(--muted-foreground)" }}>הסבר</label>
-                  <textarea className="tf-input min-h-[82px]" value={draft.explanation || ""} onChange={e => setDraft({ ...draft, explanation: e.target.value })} />
+                  {draft.explanationStatus === "pending" && (
+                    <div className="rounded-lg p-2 text-xs flex flex-col gap-1" style={{ background: "var(--tint-primary-weak)", color: "var(--foreground)" }}>
+                      <span className="font-bold">
+                        {draft.aiFlag
+                          ? "הסבר שנכתב ב-AI והבדיקה סימנה אותו. הוא מוסתר מהתלמידים עד שתאשר."
+                          : "הסבר שנכתב ב-AI, ממתין לאישור שלך. התלמידים רואים אותו עם הכיתוב \"הסבר ראשוני\"."}
+                      </span>
+                      {draft.aiNote && <span>הערת הבדיקה: {draft.aiNote}</span>}
+                    </div>
+                  )}
+                  <textarea className="tf-input min-h-[120px]" value={draft.explanation || ""} onChange={e => setDraft({ ...draft, explanation: e.target.value })} />
                   <label className="text-xs" style={{ color: "var(--muted-foreground)" }}>הערת מאמן</label>
                   <textarea className="tf-input min-h-[72px]" value={draft.coachNote || ""} onChange={e => setDraft({ ...draft, coachNote: e.target.value })} />
 
                   <div className="flex flex-wrap gap-2 mt-2">
-                    <button onClick={saveDraft} className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1" style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}>
+                    <button onClick={() => saveDraft()} className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1" style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}>
                       <Save size={13} /> שמור שאלה
                     </button>
+                    {draft.explanationStatus === "pending" && (draft.explanation || "").trim() && (
+                      <button onClick={() => saveDraft({ approve: true })} className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1" style={{ background: "var(--success)", color: "var(--background)" }}>
+                        <CheckCircle2 size={13} /> אשר הסבר ושמור
+                      </button>
+                    )}
                     <button onClick={addQuestion} className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1" style={{ background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)" }}>
                       <PlusCircle size={13} /> הוסף שאלה
                     </button>

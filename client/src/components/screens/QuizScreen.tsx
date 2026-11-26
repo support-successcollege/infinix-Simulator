@@ -268,6 +268,7 @@ export default function QuizScreen() {
               selectedAnswer={viewQuestion.options[viewAnswer.selectedIndex] || ""}
               correctAnswer={viewQuestion.options[viewQuestion.correctIndex]}
               explanation={viewQuestion.explanation}
+              explanationPending={viewQuestion.explanationPending}
             />
           )}
         </div>
@@ -430,12 +431,13 @@ export default function QuizScreen() {
 
 // ── Feedback Box ──────────────────────────────────────────────
 
-function FeedbackBox({ isCorrect, timedOut, selectedAnswer, correctAnswer, explanation }: {
+function FeedbackBox({ isCorrect, timedOut, selectedAnswer, correctAnswer, explanation, explanationPending }: {
   isCorrect: boolean;
   timedOut: boolean;
   selectedAnswer: string;
   correctAnswer: string;
   explanation?: string;
+  explanationPending?: boolean;
 }) {
   const verdictColor = isCorrect ? "var(--success)" : timedOut ? "var(--warning)" : "var(--destructive)";
   const why = (explanation || "").trim();
@@ -483,6 +485,11 @@ function FeedbackBox({ isCorrect, timedOut, selectedAnswer, correctAnswer, expla
           <p className="text-sm leading-relaxed" style={{ color: "var(--foreground)", whiteSpace: "pre-line" }}>
             {why}
           </p>
+          {explanationPending && (
+            <p className="t-caption mt-2" style={{ color: "var(--muted-foreground)" }}>
+              הסבר ראשוני, בבדיקת צוות INFINIX.
+            </p>
+          )}
         </div>
       )}
     </div>

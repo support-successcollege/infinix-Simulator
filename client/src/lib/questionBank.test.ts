@@ -231,6 +231,22 @@ describe("toQuizQuestions", () => {
     expect(q.qtype).toBeUndefined();
     expect(q.timesAsked).toBeUndefined();
   });
+
+  it("shows an unflagged AI draft as pending and hides a flagged one", () => {
+    const [plain, flagged, approved] = toQuizQuestions(
+      [
+        { id: "a", question: "ש", options: ["1", "2"], explanation: "כי כך", explanationStatus: "pending" },
+        { id: "b", question: "ש", options: ["1", "2"], explanation: "אולי", explanationStatus: "pending", aiFlag: "official_answer_doubtful" },
+        { id: "c", question: "ש", options: ["1", "2"], explanation: "נבדק", explanationStatus: "approved" },
+      ],
+      "זירה"
+    );
+    expect(plain.explanation).toBe("כי כך");
+    expect(plain.explanationPending).toBe(true);
+    expect(flagged.explanation).toBe("");
+    expect(approved.explanation).toBe("נבדק");
+    expect(approved.explanationPending).toBeUndefined();
+  });
 });
 
 // ── Filtering ────────────────────────────────────────────────

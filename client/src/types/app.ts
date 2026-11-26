@@ -39,6 +39,8 @@ export interface Question {
   options: string[];
   correctIndex: number;
   explanation: string;
+  /** The explanation was drafted by AI and the manager has not approved it yet. */
+  explanationPending?: boolean;
   coach?: string;
   arena: string;
   difficulty?: "easy" | "medium" | "hard";
@@ -109,6 +111,11 @@ export interface QuestionBankEntry {
   options?: string[];
   correctIndex?: number;
   explanation?: string;
+  /** "pending": drafted by AI, waiting for the manager. "approved": checked. */
+  explanationStatus?: "pending" | "approved";
+  /** What the AI pass noticed, for the manager only (never shown to students). */
+  aiFlag?: string;
+  aiNote?: string;
   coachNote?: string;
   difficulty?: "easy" | "medium" | "hard" | string;
   status?: string;

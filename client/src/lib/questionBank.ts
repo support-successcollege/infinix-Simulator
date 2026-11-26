@@ -184,7 +184,10 @@ export function toQuizQuestions(
         options,
         correctIndex:
           Number.isInteger(correct) && correct >= 0 && correct < options.length ? correct : 0,
-        explanation: String(q.explanation || ""),
+        // An AI draft the check flagged (answer in doubt, law may have
+        // changed, broken text) stays hidden until the manager approves it.
+        explanation: q.explanationStatus === "pending" && q.aiFlag ? "" : String(q.explanation || ""),
+        explanationPending: q.explanationStatus === "pending" || undefined,
         coach: q.coachNote ? String(q.coachNote) : undefined,
         arena: arenaName,
         difficulty: normalizeDifficulty(q.difficulty),
