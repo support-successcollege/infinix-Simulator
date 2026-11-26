@@ -11,8 +11,8 @@ import { CheckCircle2, ChevronRight, ChevronLeft, Search, Play, X, FlaskConical,
 import { toast } from "sonner";
 
 const TRAINING_MODES: { id: TrainingMode; label: string; desc: string; icon: string }[] = [
-  { id: "full", label: "מבחן מלא", desc: "מבחן מקיף עם כל הנושאים", icon: "🎯" },
-  { id: "quick", label: "אימון מהיר", desc: "5–10 שאלות, מהיר ויעיל", icon: "⚡" },
+  { id: "quick", label: "תרגול", desc: "שאלות מהנושאים שבוחרים, עם הסבר אחרי כל שאלה", icon: "📘" },
+  { id: "full", label: "סבב מעורב", desc: "שאלות מכל הנושאים, שעון לכל שאלה", icon: "🎯" },
   { id: "mistakes", label: "חזרה על טעויות", desc: "תרגל שאלות שטעית בהן", icon: "🔄" },
 ];
 
@@ -27,7 +27,9 @@ const TIME_OPTIONS = [
 
 export default function WizardScreen() {
   const { trainingConfig, setTrainingConfig, arenas, setScreen, startQuiz, isDemoContent, practiceBankData } = useApp();
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  // Arriving with an arena already chosen (from the home screen) goes
+  // straight to choosing topics; the earlier steps stay one tap back.
+  const [step, setStep] = useState<1 | 2 | 3>(() => (trainingConfig.arenaId ? 3 : 1));
   const [arenaSearch, setArenaSearch] = useState("");
 
   const filteredArenas = useMemo(() =>
@@ -146,6 +148,7 @@ export default function WizardScreen() {
             config={trainingConfig}
             arenas={arenas}
             isDemoContent={isDemoContent}
+            setCount={count => setTrainingConfig({ questionCount: count })}
             filters={filters}
             setFilters={setFilters}
             clearFilters={clearFilters}
@@ -218,7 +221,7 @@ export default function WizardScreen() {
                 className="btn-primary text-base"
               >
                 <Play size={18} />
-                התחל מבחן
+                התחל תרגול
               </button>
             )}
           </div>
@@ -496,6 +499,7 @@ function Step3Confirm({
   config,
   arenas,
   isDemoContent,
+  setCount,
   filters,
   setFilters,
   clearFilters,
@@ -508,6 +512,7 @@ function Step3Confirm({
   config: ReturnType<typeof useApp>["trainingConfig"];
   arenas: ReturnType<typeof useApp>["arenas"];
   isDemoContent: boolean;
+  setCount: (count: number) => void;
   filters: QuestionFilters;
   setFilters: (patch: Partial<QuestionFilters>) => void;
   clearFilters: () => void;
@@ -541,7 +546,7 @@ function Step3Confirm({
         <p className="eyebrow mb-2">שלב 03 · אישור</p>
         <h2 className="t-display mb-1">{arena?.name ?? config.arenaName}</h2>
         <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
-          בדוק את ההגדרות לפני שהשעון מתחיל לרוץ.
+          בחרו נושאים, או התחילו מכל המאגר.
         </p>
       </div>
 
@@ -564,6 +569,31 @@ function Step3Confirm({
             <span className="data-row-value">{row.value}</span>
           </div>
         ))}
+      </div>
+
+      {/* How many questions, here too, so arriving straight at this step
+          does not mean going back for it. */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-bold ml-1" style={{ color: "var(--muted-foreground)" }}>כמות שאלות</span>
+        {QUESTION_COUNTS.map(count => {
+          const on = config.questionCount === count;
+          return (
+            <button
+              key={count}
+              onClick={() => setCount(count)}
+              aria-pressed={on}
+              className="btn-chip"
+              style={{
+                background: on ? "var(--primary)" : "var(--tf-surface)",
+                color: on ? "var(--primary-foreground)" : "var(--foreground)",
+                borderColor: on ? "var(--primary)" : "var(--tf-border)",
+                minWidth: "3rem",
+              }}
+            >
+              {count}
+            </button>
+          );
+        })}
       </div>
 
       {/* Practice-pool filters */}
@@ -679,7 +709,7 @@ function Step3Confirm({
       )}
 
       <p className="t-caption" style={{ color: "var(--muted-foreground)" }}>
-        לאחר תחילת המבחן לא ניתן לשנות הגדרות.
+        לאחר תחילת התרגול לא ניתן לשנות הגדרות.
       </p>
       </div>
     </div>

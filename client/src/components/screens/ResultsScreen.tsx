@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 import { useReducedMotion } from "framer-motion";
 import { useApp } from "@/contexts/AppContext";
+import { examFormat, readiness, topicBreakdown, READY_EXAMS } from "@/lib/exam";
 import { RotateCcw, Home, CheckCircle2, XCircle } from "lucide-react";
 
 /* The verdict band. Emoji are gone — the number and the wording
@@ -20,7 +21,7 @@ function getScoreClass(score: number) {
 }
 
 export default function ResultsScreen() {
-  const { currentSession, setScreen, trainingConfig } = useApp();
+  const { currentSession, setScreen, sessions } = useApp();
   const [displayScore, setDisplayScore] = useState(0);
   const [showDetails, setShowDetails] = useState(false);
   const reduceMotion = useReducedMotion();
@@ -78,6 +79,36 @@ export default function ResultsScreen() {
     ? Math.round(currentSession.answers.reduce((s, a) => s + a.timeSpent, 0) / currentSession.answers.length)
     : 0;
 
+  const isExam = currentSession.mode === "exam";
+  const format = examFormat(currentSession.arenaName);
+  const passed = score >= format.pass;
+  const unanswered = currentSession.answers.filter(a => a.selectedIndex === -1).length;
+  const topics = topicBreakdown(currentSession.questions, currentSession.answers);
+  const weakest = topics.find(t => t.total >= 2 && t.percent < 70) ?? null;
+  const ready = isExam ? readiness(sessions, currentSession.arenaName) : null;
+  const modeName =
+    currentSession.mode === "exam" ? "מבחן מלא"
+      : currentSession.mode === "full" ? "מבחן"
+        : currentSession.mode === "quick" ? "תרגול"
+          : "הטעויות שלי";
+
+  // One recommendation, the most useful next step.
+  const recommendation = isExam
+    ? !passed
+      ? weakest
+        ? `הנושא החלש במבחן הזה הוא ${weakest.topic} (${weakest.correct} מתוך ${weakest.total}). תרגל אותו ואת הטעויות שלך לפני המבחן הבא.`
+        : "עבור על הטעויות שלך, ואז נסה מבחן מלא נוסף."
+      : ready && ready.ready
+        ? "אתה מוכן: 10 מבחנים מלאים השבוע בציון גבוה. שמור על הקצב עד יום המבחן."
+        : score >= (ready?.readyScore ?? 75)
+          ? `מבחן שנספר למוכנות. עוד ${Math.max(0, READY_EXAMS - (ready?.qualifying ?? 0))} כאלה השבוע ואתה מוכן.`
+          : `עברת. כדי להיחשב מוכן צריך ${ready?.readyScore ?? 75} ומעלה${weakest ? `, והדרך לשם עוברת ב${weakest.topic}` : ""}.`
+    : weakest
+      ? `שווה לחזור על ${weakest.topic}: ${weakest.correct} מתוך ${weakest.total} נכונות.`
+      : wrongCount > 0
+        ? "השאלות שטעית בהן נכנסו ל\"הטעויות שלי\". חזור עליהן עד שתענה נכון פעמיים ברצף."
+        : "כל התשובות נכונות. נסה מבחן מלא כדי לבדוק את עצמך בזמן אמת.";
+
   return (
     <div className="h-full overflow-y-auto" style={{ direction: "rtl" }}>
       {/* Masthead.
@@ -87,7 +118,7 @@ export default function ResultsScreen() {
       <div className="masthead">
         <div className="screen-body px-4 sm:px-6 pt-8 pb-6">
           <p className="eyebrow mb-3">
-            תוצאות · {currentSession.arenaName} · {currentSession.mode === "full" ? "מבחן מלא" : currentSession.mode === "quick" ? "אימון מהיר" : "חזרה על טעויות"}
+            תוצאות · {currentSession.arenaName} · {modeName}
           </p>
 
           <div className="flex items-end justify-between gap-6 flex-wrap mb-4">
@@ -97,9 +128,17 @@ export default function ResultsScreen() {
             >
               {displayScore}%
             </span>
-            <h2 className="t-title pb-2">{scoreInfo.label}</h2>
+            <h2 className="t-title pb-2" style={isExam ? { color: passed ? "var(--success)" : "var(--destructive)" } : undefined}>
+              {isExam ? (passed ? "עברת" : "לא עברת") : scoreInfo.label}
+            </h2>
           </div>
 
+          {isExam && (
+            <p className="text-sm mb-3" style={{ color: "var(--muted-foreground)" }}>
+              ציון עובר {format.pass}{format.passAssumed ? " (לא פורסם רשמית, לפי המקובל בהכנה)" : ""}
+              {unanswered > 0 && ` · ${unanswered} שאלות לא נענו`}
+            </p>
+          )}
           <div className="progress-bar-track" role="presentation">
             <div
               className="progress-bar-fill"
@@ -140,26 +179,35 @@ export default function ResultsScreen() {
             <h3 className="section-head-title">סיכום והמלצה</h3>
           </div>
           <p className="t-body max-w-prose" style={{ color: "var(--foreground)" }}>
-            {score >= 90
-              ? `ענית נכון על ${correctCount} מתוך ${totalQ} שאלות. השליטה שלך בחומר של זירת ${currentSession.arenaName} מלאה.`
-              : score >= 75
-                ? `ענית נכון על ${correctCount} מתוך ${totalQ} שאלות. נותרו ${wrongCount} שאלות שטעית בהן — שם נמצא הפער.`
-                : score >= 60
-                  ? `ענית נכון על ${correctCount} מתוך ${totalQ} שאלות. מומלץ לחזור על הנושאים שגרמו לטעויות לפני הסבב הבא.`
-                  : `ענית נכון על ${correctCount} מתוך ${totalQ} שאלות. מומלץ לחזור על החומר ולהריץ סבב נוסף.`
-            }
-            {" "}
-            {score >= trainingConfig.questionCount * 8
-              ? "המשך באותו קצב כדי לשמור על הרמה."
-              : "סבב נוסף בנושא הזה יסגור את הפער מהר יותר מאשר מעבר לנושא חדש."}
+            ענית נכון על {correctCount} מתוך {totalQ} שאלות. {recommendation}
           </p>
         </section>
+
+        {/* Where it is strong and where it is weak. */}
+        {topics.length > 1 && (
+          <section>
+            <div className="section-head">
+              <span className="section-head-index">02</span>
+              <h3 className="section-head-title">לפי נושא</h3>
+            </div>
+            <div className="data-list">
+              {topics.map(t => (
+                <div key={t.topic} className="data-row">
+                  <span className="text-sm min-w-0 flex-1" style={{ color: "var(--foreground)" }}>{t.topic}</span>
+                  <span className="t-numeric text-sm flex-shrink-0" style={{ color: t.percent >= 70 ? "var(--success)" : t.percent >= 50 ? "var(--warning)" : "var(--destructive)" }}>
+                    {t.correct}/{t.total}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Question breakdown — a ruled list, one row per question. */}
         {showDetails && currentSession.answers.length > 0 && (
           <section>
             <div className="section-head">
-              <span className="section-head-index">02</span>
+              <span className="section-head-index">{topics.length > 1 ? "03" : "02"}</span>
               <h3 className="section-head-title">פירוט שאלות</h3>
               <span className="section-head-tail eyebrow">
                 {correctCount}/{totalQ}
@@ -187,9 +235,14 @@ export default function ResultsScreen() {
                         {q.text.length > 90 ? q.text.slice(0, 90) + "…" : q.text}
                       </p>
                       {!answer.isCorrect && (
-                        <p className="t-caption mt-1" style={{ color: "var(--success)" }}>
-                          {q.options[q.correctIndex]}
-                        </p>
+                        <>
+                          <p className="t-caption mt-1" style={{ color: "var(--destructive)" }}>
+                            {answer.selectedIndex === -1 ? "לא נענתה" : `סימנת: ${q.options[answer.selectedIndex] ?? ""}`}
+                          </p>
+                          <p className="t-caption mt-0.5" style={{ color: "var(--success)" }}>
+                            התשובה הנכונה: {q.options[q.correctIndex]}
+                          </p>
+                        </>
                       )}
                       {q.explanation?.trim() && (
                         <details className="mt-1">
@@ -213,9 +266,9 @@ export default function ResultsScreen() {
         )}
         {/* Action buttons */}
         <div className="flex gap-3">
-          <button onClick={() => setScreen("wizard")} className="btn-primary flex-1 text-sm">
+          <button onClick={() => setScreen(isExam ? "hub" : "wizard")} className="btn-primary flex-1 text-sm">
             <RotateCcw size={15} />
-            אימון נוסף
+            {isExam ? "לבית הזירה" : "תרגול נוסף"}
           </button>
           <button onClick={() => setScreen("hub")} className="btn-secondary flex-1 text-sm">
             <Home size={15} />

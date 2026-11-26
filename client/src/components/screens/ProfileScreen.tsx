@@ -186,7 +186,7 @@ export default function ProfileScreen() {
                       {session.arenaName}
                     </div>
                     <div className="t-caption flex items-center gap-1.5" style={{ color: "var(--muted-foreground)" }}>
-                      <span>{session.mode === "full" ? "מבחן מלא" : session.mode === "quick" ? "אימון מהיר" : "חזרה"}</span>
+                      <span>{session.mode === "exam" ? "מבחן מלא" : session.mode === "full" ? "סבב מעורב" : session.mode === "quick" ? "תרגול" : "הטעויות שלי"}</span>
                       <span aria-hidden="true">·</span>
                       <Clock size={10} aria-hidden="true" />
                       <span className="t-numeric">{new Date(session.startTime).toLocaleDateString("he-IL")}</span>

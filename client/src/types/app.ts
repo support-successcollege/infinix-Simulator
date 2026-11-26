@@ -5,9 +5,9 @@
    tests) can import types without pulling in React.
    ============================================================ */
 
-export type Screen = "hub" | "wizard" | "quiz" | "results" | "profile" | "manager" | "settings";
+export type Screen = "hub" | "wizard" | "quiz" | "exam" | "results" | "profile" | "manager" | "settings";
 
-export type TrainingMode = "full" | "quick" | "mistakes";
+export type TrainingMode = "full" | "quick" | "mistakes" | "exam";
 
 export type UserRole = "trainee" | "manager";
 

@@ -30,6 +30,8 @@ import {
   toQuizQuestions,
 } from "@/lib/questionBank";
 import { STORAGE_KEYS, isStorageAvailable, readJson, removeKey, writeJson } from "@/lib/storage";
+import { buildExam, examFormat, openMistakes, type YearScope } from "@/lib/exam";
+import { clearDraft, readDraft, saveDraft } from "@/lib/examDraft";
 import type {
   Arena,
   PublicAuthUser,
@@ -322,7 +324,14 @@ interface AppContextValue {
 
   // Quiz
   currentSession: QuizSession | null;
-  startQuiz: () => { ok: boolean; error?: string };
+  /** Start practice; `override` is applied to the saved settings first. */
+  startQuiz: (override?: Partial<TrainingConfig>) => { ok: boolean; error?: string };
+  /** A full exam in the real format for the chosen arena. */
+  startExam: (scope: YearScope) => { ok: boolean; error?: string };
+  /** Back into the full exam left unfinished in this browser. */
+  resumeExam: () => boolean;
+  /** Hand in a full exam: the chosen option and seconds spent per question. */
+  submitExam: (selections: number[], spent: number[]) => void;
   submitAnswer: (selectedIndex: number, timeSpent: number) => void;
   nextQuestion: () => void;
   currentQuestionIndex: number;
@@ -940,14 +949,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // ── Quiz flow ────────────────────────────────────────────────
 
-  const startQuiz = useCallback((): { ok: boolean; error?: string } => {
+  const startQuiz = useCallback((override?: Partial<TrainingConfig>): { ok: boolean; error?: string } => {
+    const config: TrainingConfig = { ...trainingConfig, ...override };
+    if (override) setTrainingConfigState(config);
     // Only a topic this user may practise: a choice saved earlier, by
     // someone else on this browser or before access changed, is refused.
     const arena =
-      arenas.find(a => a.id === trainingConfig.arenaId) ?? arenas.find(a => a.name === trainingConfig.arenaName);
+      arenas.find(a => a.id === config.arenaId) ?? arenas.find(a => a.name === config.arenaName);
     if (!arena && !isDemoContent) return { ok: false, error: "בחרו נושא מהרשימה" };
-    const arenaName = arena?.name || trainingConfig.arenaName || "כללי";
-    const targetCount = Math.max(1, Math.min(30, trainingConfig.questionCount));
+    const arenaName = arena?.name || config.arenaName || "כללי";
+    const targetCount = Math.max(1, Math.min(30, config.questionCount));
 
     const bankQuestions = isDemoContent
       ? []
@@ -957,17 +968,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return { ok: false, error: "לא נמצאו שאלות זמינות בנושא הזה" };
     }
 
-    let pool: Question[] = filterQuestions(bankQuestions, trainingConfig.filters);
+    let pool: Question[] = filterQuestions(bankQuestions, config.filters);
     if (pool.length === 0) {
       return { ok: false, error: "אין שאלות שמתאימות לסינון שבחרת" };
     }
 
-    if (trainingConfig.mode === "mistakes") {
-      const wrongIds = new Set<string>();
-      sessions.forEach(s => s.answers.forEach(a => !a.isCorrect && wrongIds.add(a.questionId)));
+    if (config.mode === "mistakes") {
+      // Wrong at some point and not yet right twice in a row since.
+      const wrongIds = openMistakes(sessions, arenaName);
       const mistakesPool = pool.filter(q => wrongIds.has(q.id));
       if (mistakesPool.length === 0) {
-        return { ok: false, error: "אין עדיין שאלות שטעית בהן בנושא הזה" };
+        return { ok: false, error: "אין כרגע שאלות פתוחות לתיקון בנושא הזה" };
       }
       pool = mistakesPool;
     }
@@ -980,7 +991,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setCurrentSession({
       id: `s-${crypto.randomUUID()}`,
       arenaName,
-      mode: trainingConfig.mode,
+      mode: config.mode,
       questions,
       answers: [],
       startTime: new Date().toISOString(),
@@ -1024,6 +1035,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [currentSession, currentQuestionIndex]
   );
 
+  /** Record a finished session here and on the server, and show its results. */
+  const completeSession = useCallback(
+    (finished: QuizSession) => {
+      setCurrentSession(finished);
+      setSessions(prev => [finished, ...prev.filter(p => p.id !== finished.id)]);
+      setCurrentScreen("results");
+      if (authToken && !finished.isDemo) {
+        fetch(HISTORY_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+          body: JSON.stringify({ session: toStored(finished) }),
+        }).catch(() => console.warn("[history] could not save the session to the server"));
+      }
+    },
+    [authToken]
+  );
+
   const nextQuestion = useCallback(() => {
     if (!currentSession) return;
     const nextIdx = currentQuestionIndex + 1;
@@ -1036,23 +1064,84 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     const correctCount = currentSession.answers.filter(a => a.isCorrect).length;
-    const finished: QuizSession = {
+    completeSession({
       ...currentSession,
       endTime: new Date().toISOString(),
       score: calculateScore(correctCount, currentSession.questions.length),
-    };
+    });
+  }, [completeSession, currentSession, currentQuestionIndex]);
 
-    setCurrentSession(finished);
-    setSessions(prev => [finished, ...prev]);
-    setCurrentScreen("results");
-    if (authToken && !finished.isDemo) {
-      fetch(HISTORY_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ session: toStored(finished) }),
-      }).catch(() => console.warn("[history] could not save the session to the server"));
-    }
-  }, [authToken, currentSession, currentQuestionIndex]);
+  // ── Full exam ────────────────────────────────────────────────
+
+  const startExam = useCallback(
+    (scope: YearScope): { ok: boolean; error?: string } => {
+      const arena =
+        arenas.find(a => a.name === trainingConfig.arenaName) ?? arenas.find(a => a.id === trainingConfig.arenaId);
+      if (!arena) return { ok: false, error: "בחרו נושא מהרשימה" };
+      const format = examFormat(arena.name);
+      const pool = toQuizQuestions(practiceBank?.categories?.[arena.name]?.questions, arena.name);
+      const questions = buildExam(pool, format, scope);
+      if (questions.length === 0) return { ok: false, error: "לא נמצאו שאלות למבחן בנושא הזה" };
+
+      const session: QuizSession = {
+        id: `s-${crypto.randomUUID()}`,
+        arenaName: arena.name,
+        mode: "exam",
+        questions,
+        answers: [],
+        startTime: new Date().toISOString(),
+        score: 0,
+        isDemo: false,
+      };
+      if (user) {
+        saveDraft({
+          userId: user.id,
+          session,
+          selections: questions.map(() => -1),
+          flags: questions.map(() => false),
+          spent: questions.map(() => 0),
+          current: 0,
+          deadline: Date.now() + format.minutes * 60_000,
+          scope,
+        });
+      }
+      setCurrentSession(session);
+      setCurrentScreen("exam");
+      return { ok: true };
+    },
+    [arenas, practiceBank, trainingConfig.arenaId, trainingConfig.arenaName, user]
+  );
+
+  const resumeExam = useCallback((): boolean => {
+    const draft = readDraft(user?.id);
+    if (!draft) return false;
+    setCurrentSession(draft.session);
+    setCurrentScreen("exam");
+    return true;
+  }, [user?.id]);
+
+  const submitExam = useCallback(
+    (selections: number[], spent: number[]) => {
+      if (!currentSession || currentSession.mode !== "exam") return;
+      const answers: QuizAnswer[] = currentSession.questions.map((q, i) => {
+        const selectedIndex = Number.isInteger(selections[i]) ? selections[i] : -1;
+        return {
+          questionId: q.id,
+          selectedIndex,
+          isCorrect: selectedIndex === q.correctIndex,
+          timeSpent: Math.max(0, Math.round(spent[i] || 0)),
+        };
+      });
+      clearDraft();
+      completeSession({
+        ...currentSession,
+        answers,
+        endTime: new Date().toISOString(),
+        score: calculateScore(answers.filter(a => a.isCorrect).length, answers.length),
+      });
+    },
+    [completeSession, currentSession]
+  );
 
   const resetSessions = useCallback(() => {
     setSessions([]);
@@ -1109,6 +1198,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       refreshQuestionBank,
       currentSession,
       startQuiz,
+      startExam,
+      resumeExam,
+      submitExam,
       submitAnswer,
       nextQuestion,
       currentQuestionIndex,
@@ -1160,6 +1252,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       refreshQuestionBank,
       currentSession,
       startQuiz,
+      startExam,
+      resumeExam,
+      submitExam,
       submitAnswer,
       nextQuestion,
       currentQuestionIndex,

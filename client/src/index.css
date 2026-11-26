@@ -900,6 +900,60 @@ html[data-theme="dark"] {
 
   .answer-option:disabled { cursor: default; }
 
+  /* A full exam: the choice is marked, but not graded until hand-in. */
+  .answer-option.selected-neutral {
+    border-color: var(--foreground);
+    background: var(--tint-primary-weak);
+    box-shadow: 0 0 0 1px var(--foreground);
+  }
+
+  .answer-option.selected-neutral .answer-key {
+    background: var(--foreground);
+    color: var(--background);
+  }
+
+  /* The exam map: one cell per question. */
+  .exam-map {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(2.5rem, 1fr));
+    gap: 0.4rem;
+  }
+
+  .exam-map-cell {
+    position: relative;
+    height: 2.5rem;
+    border-radius: 10px;
+    border: 1.5px solid var(--tf-border);
+    background: var(--tf-surface);
+    color: var(--foreground);
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+
+  .exam-map-cell.answered {
+    background: var(--foreground);
+    border-color: var(--foreground);
+    color: var(--background);
+  }
+
+  .exam-map-cell.current {
+    box-shadow: 0 0 0 2px var(--accent-bright);
+  }
+
+  .exam-map-cell .flag-dot {
+    position: absolute;
+    top: -4px;
+    inset-inline-end: -4px;
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: var(--accent-bright);
+    border: 2px solid var(--background);
+  }
+
+
   /* The letter key: a round chip that turns into the verdict icon. */
   .answer-key {
     width: 2rem;

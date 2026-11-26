@@ -16,9 +16,9 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const MODE_OPTIONS: { value: TrainingMode; label: string }[] = [
-  { value: "full", label: "מבחן מלא" },
-  { value: "quick", label: "אימון מהיר" },
-  { value: "mistakes", label: "חזרה על טעויות" },
+  { value: "quick", label: "תרגול" },
+  { value: "full", label: "סבב מעורב" },
+  { value: "mistakes", label: "הטעויות שלי" },
 ];
 
 const COUNT_OPTIONS = [5, 10, 15, 20, 30];

@@ -29,6 +29,10 @@ export const STORAGE_KEYS = {
   session: "ic_active_session_v1",
   history: "ic_session_history_v1",
   trainingConfig: "ic_training_config_v1",
+  /** A full exam in progress (see examDraft.ts). */
+  examDraft: "ic_exam_draft_v1",
+  /** Exam dates the student set, per user and arena. */
+  examDates: "ic_exam_dates_v1",
 } as const;
 
 function getStore(): Storage | null {
