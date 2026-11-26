@@ -116,6 +116,8 @@ export interface QuestionBankEntry {
   /** What the AI pass noticed, for the manager only (never shown to students). */
   aiFlag?: string;
   aiNote?: string;
+  /** Taken out of practice (status "draft") because the check found it broken. */
+  hiddenByCheck?: boolean;
   coachNote?: string;
   difficulty?: "easy" | "medium" | "hard" | string;
   status?: string;

@@ -429,7 +429,15 @@ function ContentTab({
         options,
         correctIndex: safeCorrect,
         status: draft.status || "active",
-        ...(approve ? { explanationStatus: "approved" as const, aiFlag: undefined, aiNote: undefined } : {}),
+        // Approving also puts a question the check took out of practice back in.
+        ...(approve
+          ? {
+              explanationStatus: "approved" as const,
+              aiFlag: undefined,
+              aiNote: undefined,
+              ...(draft.hiddenByCheck ? { status: "active", hiddenByCheck: undefined } : {}),
+            }
+          : {}),
       };
     });
     toast.success(approve
@@ -600,6 +608,11 @@ function ContentTab({
                           : "הסבר שנכתב ב-AI, ממתין לאישור שלך. התלמידים רואים אותו עם הכיתוב \"הסבר ראשוני\"."}
                       </span>
                       {draft.aiNote && <span>הערת הבדיקה: {draft.aiNote}</span>}
+                      {draft.hiddenByCheck && (
+                        <span className="font-bold" style={{ color: "var(--warning)" }}>
+                          השאלה עצמה מוסתרת מהתרגול. תקן את הנוסח או התשובות, ואז "אשר הסבר ושמור" יחזיר אותה.
+                        </span>
+                      )}
                     </div>
                   )}
                   <textarea className="tf-input min-h-[120px]" value={draft.explanation || ""} onChange={e => setDraft({ ...draft, explanation: e.target.value })} />
@@ -610,7 +623,7 @@ function ContentTab({
                     <button onClick={() => saveDraft()} className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1" style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}>
                       <Save size={13} /> שמור שאלה
                     </button>
-                    {draft.explanationStatus === "pending" && (draft.explanation || "").trim() && (
+                    {draft.explanationStatus === "pending" && ((draft.explanation || "").trim() || draft.hiddenByCheck) && (
                       <button onClick={() => saveDraft({ approve: true })} className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1" style={{ background: "var(--success)", color: "var(--background)" }}>
                         <CheckCircle2 size={13} /> אשר הסבר ושמור
                       </button>
