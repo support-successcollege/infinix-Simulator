@@ -1,5 +1,5 @@
 /* ============================================================
-   ResultsScreen — results and debrief
+   ResultsScreen — results and summary
 
    Editorial: the score is the headline, the breakdown is a ruled
    list, and colour appears only where it means correct or wrong.
@@ -133,11 +133,11 @@ export default function ResultsScreen() {
           ))}
         </div>
 
-        {/* Debrief — a paragraph under a rule, the way a report reads. */}
+        {/* Summary — a paragraph under a rule, the way a report reads. */}
         <section>
           <div className="section-head">
             <span className="section-head-index">01</span>
-            <h3 className="section-head-title">דיבריף</h3>
+            <h3 className="section-head-title">סיכום והמלצה</h3>
           </div>
           <p className="t-body max-w-prose" style={{ color: "var(--foreground)" }}>
             {score >= 90
@@ -190,6 +190,16 @@ export default function ResultsScreen() {
                         <p className="t-caption mt-1" style={{ color: "var(--success)" }}>
                           {q.options[q.correctIndex]}
                         </p>
+                      )}
+                      {q.explanation?.trim() && (
+                        <details className="mt-1">
+                          <summary className="t-caption font-bold cursor-pointer" style={{ color: "var(--foreground)" }}>
+                            למה זו התשובה?
+                          </summary>
+                          <p className="text-sm leading-relaxed mt-1" style={{ color: "var(--foreground)", whiteSpace: "pre-line" }}>
+                            {q.explanation.trim()}
+                          </p>
+                        </details>
                       )}
                     </div>
                     <span className="t-numeric text-xs flex-shrink-0" style={{ color: "var(--muted-foreground)" }}>
