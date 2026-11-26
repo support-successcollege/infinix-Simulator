@@ -42,7 +42,6 @@ export async function readFresh(
   for (let attempt = 0; attempt < waits.length; attempt++) {
     if (waits[attempt]) await new Promise(resolve => setTimeout(resolve, waits[attempt]));
     const url = new URL(meta.url);
-    url.searchParams.set("cache", "0");
     url.searchParams.set("v", bareEtag(meta.etag));
     if (attempt) url.searchParams.set("r", Math.random().toString(36).slice(2));
     const res = await fetch(url, { cache: "no-store" });
