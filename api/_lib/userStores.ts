@@ -37,15 +37,23 @@ export async function readFresh(
     if (err instanceof BlobNotFoundError) return null;
     throw err;
   }
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // A write can take a moment to reach every copy, so later tries wait.
+  const waits = [0, 250, 600, 1200, 2500];
+  for (let attempt = 0; attempt < waits.length; attempt++) {
+    if (waits[attempt]) await new Promise(resolve => setTimeout(resolve, waits[attempt]));
     const url = new URL(meta.url);
+    url.searchParams.set("cache", "0");
     url.searchParams.set("v", bareEtag(meta.etag));
     if (attempt) url.searchParams.set("r", Math.random().toString(36).slice(2));
     const res = await fetch(url, { cache: "no-store" });
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`blob read failed: ${res.status}`);
     const served = res.headers.get("etag");
-    if (served && bareEtag(served) !== bareEtag(meta.etag)) continue;
+    if (served && bareEtag(served) !== bareEtag(meta.etag)) {
+      console.warn("[blob] stale copy", { attempt, want: meta.etag, served, cache: res.headers.get("x-vercel-cache"), age: res.headers.get("age") });
+      continue;
+    }
+    if (attempt) console.warn("[blob] fresh after", attempt, "retries");
     return { bytes: Buffer.from(await res.arrayBuffer()), etag: meta.etag, uploadedAt: meta.uploadedAt };
   }
   // The CDN kept serving another version. Writing over what was read would
