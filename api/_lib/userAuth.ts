@@ -59,11 +59,22 @@ export interface StoredUser {
   mustChangePassword: boolean;
   /** Bumped on every password change; tokens carry it. */
   passwordVersion: number;
+  /**
+   * The topics this user may practise, by name. Absent means every
+   * topic (managers, and accounts made before topics were assigned).
+   */
+  arenas?: string[];
+  /** "lms": the account was made by a sign-in from the learning system. */
+  source?: "lms";
+  /** The user's id in the learning system. */
+  lmsUserId?: string;
 }
 
 export interface UserDoc {
   version: 1;
   users: StoredUser[];
+  /** Launch tokens already used, kept until they expire, so a link works once. */
+  usedLaunches?: { jti: string; exp: number }[];
 }
 
 export interface PublicUser {
@@ -73,6 +84,8 @@ export interface PublicUser {
   role: Role;
   createdAt: string;
   mustChangePassword: boolean;
+  arenas?: string[];
+  source?: "lms";
 }
 
 export interface StoreAdapter {
@@ -94,6 +107,8 @@ export interface AuthEnv {
   VITE_ADMIN_PASSWORD?: string;
   MANAGER_EMAIL?: string;
   MANAGER_PASSWORD?: string;
+  /** Shared with the learning system, which signs sign-in links with it. */
+  LMS_SSO_SECRET?: string;
 }
 
 export interface AuthRequest {
@@ -174,7 +189,11 @@ export function decryptDoc(text: string, secret: string): UserDoc {
   decipher.setAuthTag(Buffer.from(box.tag, "base64"));
   const plain = Buffer.concat([decipher.update(Buffer.from(box.data, "base64")), decipher.final()]);
   const doc = JSON.parse(plain.toString("utf8")) as UserDoc;
-  return { version: 1, users: Array.isArray(doc.users) ? doc.users : [] };
+  return {
+    version: 1,
+    users: Array.isArray(doc.users) ? doc.users : [],
+    ...(Array.isArray(doc.usedLaunches) ? { usedLaunches: doc.usedLaunches } : {}),
+  };
 }
 
 interface TokenPayload {
@@ -204,11 +223,74 @@ export function readToken(token: string, secret: string, now = Date.now()): Toke
   }
 }
 
+// ── Sign-in from the learning system ──────────────────────────
+//
+// The learning system signs a short-lived claim about the student it
+// sends over: who they are and which courses they hold. The shared
+// secret is the whole trust: no secret, no sign-in. A claim is good
+// for a few minutes and only once, so a copied link is worth little.
+
+export interface LaunchClaims {
+  v: 1;
+  /** The learning system's host, for the record. */
+  iss: string;
+  /** The student's id there. */
+  sub: string;
+  email: string;
+  name: string;
+  /** Titles of the courses they hold; each opens the topic of that name. */
+  courses: string[];
+  /** Staff of the college: every topic. */
+  staff?: boolean;
+  iat: number;
+  exp: number;
+  jti: string;
+}
+
+const LAUNCH_MAX_AGE_MS = 5 * 60 * 1000;
+
+/** Sign a launch claim. The learning system does exactly this. */
+export function signLaunchToken(claims: LaunchClaims, secret: string): string {
+  const body = Buffer.from(JSON.stringify(claims)).toString("base64url");
+  const sig = createHmac("sha256", secret).update(body).digest("base64url");
+  return `${body}.${sig}`;
+}
+
+export function readLaunchToken(token: string, secret: string, now = Date.now()): LaunchClaims | null {
+  if (!secret) return null;
+  const [body, sig] = String(token || "").split(".");
+  if (!body || !sig) return null;
+  const expected = createHmac("sha256", secret).update(body).digest("base64url");
+  if (!sameString(sig, expected)) return null;
+  try {
+    const c = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as LaunchClaims;
+    if (c.v !== 1 || !c.sub || !c.jti || !isEmail(normalizeEmail(c.email))) return null;
+    if (typeof c.exp !== "number" || typeof c.iat !== "number") return null;
+    if (c.exp < now || c.exp - c.iat > LAUNCH_MAX_AGE_MS || c.iat > now + 60_000) return null;
+    if (!Array.isArray(c.courses)) return null;
+    return { ...c, courses: c.courses.map(x => String(x)).filter(Boolean) };
+  } catch {
+    return null;
+  }
+}
+
 // ── Validation ─────────────────────────────────────────────────
 
-const normalizeEmail = (email: unknown) => String(email || "").trim().toLowerCase();
-const isEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+function normalizeEmail(email: unknown): string {
+  return String(email || "").trim().toLowerCase();
+}
+function isEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
 const toRole = (role: unknown): Role => (role === "manager" ? "manager" : "trainee");
+
+/** A topic list from a request: an array of names, or null for "every topic". */
+function toArenas(value: unknown): string[] | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (!Array.isArray(value)) return undefined;
+  return Array.from(new Set(value.map(v => String(v).trim()).filter(Boolean))).slice(0, 50);
+}
 
 export function passwordWeakness(password: string): string | null {
   if (password.length < 8) return "הסיסמה חייבת להכיל לפחות 8 תווים";
@@ -264,6 +346,8 @@ function toPublic(u: StoredUser): PublicUser {
     role: u.role,
     createdAt: u.createdAt,
     mustChangePassword: !!u.mustChangePassword,
+    ...(Array.isArray(u.arenas) ? { arenas: u.arenas } : {}),
+    ...(u.source ? { source: u.source } : {}),
   };
 }
 
@@ -400,7 +484,8 @@ export function createAuthService(store: StoreAdapter, env: AuthEnv, now: () => 
   }
 
   async function createUser(body: unknown): Promise<AuthResponse> {
-    const input = (body || {}) as { name?: unknown; email?: unknown; password?: unknown; role?: unknown };
+    const input = (body || {}) as { name?: unknown; email?: unknown; password?: unknown; role?: unknown; arenas?: unknown };
+    const arenas = toArenas(input.arenas);
     const name = String(input.name || "").trim();
     const email = normalizeEmail(input.email);
     const password = String(input.password || "");
@@ -422,6 +507,7 @@ export function createAuthService(store: StoreAdapter, env: AuthEnv, now: () => 
         createdAt: new Date(now()).toISOString(),
         mustChangePassword: false,
         passwordVersion: 0,
+        ...(arenas ? { arenas } : {}),
       };
       d.users.push(user);
       return user;
@@ -431,7 +517,8 @@ export function createAuthService(store: StoreAdapter, env: AuthEnv, now: () => 
   }
 
   async function updateUser(id: string, body: unknown): Promise<AuthResponse> {
-    const input = (body || {}) as { role?: unknown; name?: unknown; password?: unknown };
+    const input = (body || {}) as { role?: unknown; name?: unknown; password?: unknown; arenas?: unknown };
+    const arenas = toArenas(input.arenas);
     const password = input.password === undefined ? null : String(input.password);
     if (password !== null) {
       const weakness = passwordWeakness(password);
@@ -453,6 +540,8 @@ export function createAuthService(store: StoreAdapter, env: AuthEnv, now: () => 
         const name = String(input.name).trim();
         if (name) u.name = name;
       }
+      if (arenas === null) delete u.arenas;
+      else if (arenas) u.arenas = arenas;
       if (credential) {
         u.salt = credential.salt;
         u.hash = credential.hash;
@@ -462,6 +551,53 @@ export function createAuthService(store: StoreAdapter, env: AuthEnv, now: () => 
       return ok({ user: toPublic(u) });
     });
     return outcome;
+  }
+
+  /** Sign in a student the learning system sends over, making the account the first time. */
+  async function launch(body: unknown): Promise<AuthResponse> {
+    const launchSecret = String(env.LMS_SSO_SECRET || "");
+    if (!launchSecret) return fail(503, "הכניסה ממערכת הלימוד לא מוגדרת בשרת");
+    const input = (body || {}) as { token?: unknown; probe?: unknown };
+    const claims = readLaunchToken(String(input.token || ""), launchSecret, now());
+    if (!claims) return fail(401, "קישור הכניסה ממערכת הלימוד לא תקין או שפג תוקפו. חזרו למערכת הלימוד ולחצו שוב.");
+    // "Test connection" in the learning system: the signature checks out.
+    if (input.probe) return ok({ ok: true });
+
+    const email = normalizeEmail(claims.email);
+    const outcome = await mutate<StoredUser | "replayed">(d => {
+      const t = now();
+      d.usedLaunches = (d.usedLaunches || []).filter(x => x.exp > t);
+      if (d.usedLaunches.some(x => x.jti === claims.jti)) return "replayed";
+      d.usedLaunches.push({ jti: claims.jti, exp: claims.exp });
+
+      let u = d.users.find(x => x.email === email);
+      if (!u) {
+        u = {
+          id: `u-${randomUUID()}`,
+          name: String(claims.name || "").trim() || email,
+          email,
+          role: "trainee",
+          salt: "",
+          hash: "",
+          createdAt: new Date(t).toISOString(),
+          mustChangePassword: false,
+          passwordVersion: 0,
+        };
+        d.users.push(u);
+      }
+      u.source = "lms";
+      u.lmsUserId = claims.sub;
+      if (claims.name && !u.name) u.name = claims.name;
+      // The learning system is the record of what a student holds: each
+      // sign-in replaces the list. Managers and staff keep every topic.
+      if (u.role === "trainee") {
+        if (claims.staff) delete u.arenas;
+        else u.arenas = Array.from(new Set(claims.courses));
+      }
+      return u;
+    });
+    if (outcome === "replayed") return fail(401, "קישור הכניסה כבר נוצל. חזרו למערכת הלימוד ולחצו שוב.");
+    return ok({ token: issue(outcome), user: toPublic(outcome) });
   }
 
   async function deleteUser(id: string, selfId: string): Promise<AuthResponse> {
@@ -496,6 +632,10 @@ export function createAuthService(store: StoreAdapter, env: AuthEnv, now: () => 
         if (method !== "POST") return fail(405, "method not allowed");
         return changeOwnPassword(req);
 
+      case "sso":
+        if (method !== "POST") return fail(405, "method not allowed");
+        return launch(req.body);
+
       case "users": {
         const gate = await requireManager(req);
         if (gate.error) return gate.error;
@@ -519,7 +659,13 @@ export function createAuthService(store: StoreAdapter, env: AuthEnv, now: () => 
     return who?.user.role === "manager";
   }
 
-  return { handle, isManager };
+  /** The signed-in user behind a request, for the other endpoints. */
+  async function currentUser(authorization?: string): Promise<PublicUser | null> {
+    if (!secret) return null;
+    return (await whoIs(authorization))?.user ?? null;
+  }
+
+  return { handle, isManager, currentUser };
 }
 
 // ── Stores ─────────────────────────────────────────────────────

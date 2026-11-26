@@ -5,9 +5,12 @@ import {
   encryptDoc,
   memoryStore,
   readToken,
+  signLaunchToken,
   signToken,
   type AuthEnv,
+  type LaunchClaims,
 } from "./userAuth";
+import { createHistoryService, memoryHistoryStore } from "./history";
 
 const SECRET = "test-secret-for-unit-tests";
 const ENV: AuthEnv = {
@@ -16,7 +19,25 @@ const ENV: AuthEnv = {
   VITE_ADMIN_PASSWORD: "admin-seed-1",
   MANAGER_EMAIL: "boss@example.test",
   MANAGER_PASSWORD: "boss-seed-1",
+  LMS_SSO_SECRET: "lms-shared-secret",
 };
+
+function launch(over: Partial<LaunchClaims> = {}, secret = "lms-shared-secret") {
+  const now = Date.now();
+  const claims: LaunchClaims = {
+    v: 1,
+    iss: "learn.infinix.test",
+    sub: "lms-1",
+    email: "Noa@Example.test",
+    name: "נועה",
+    courses: ["כלכלה", "מקצועית א׳"],
+    iat: now,
+    exp: now + 120_000,
+    jti: `j-${Math.random()}`,
+    ...over,
+  };
+  return signLaunchToken(claims, secret);
+}
 
 function setup(env: AuthEnv = ENV) {
   const store = memoryStore();
@@ -27,7 +48,7 @@ function setup(env: AuthEnv = ENV) {
     const out = await call("POST", "login", { email, password });
     return { out, token: (out.body as { token?: string }).token || "" };
   };
-  return { store, call, login };
+  return { store, call, login, service };
 }
 
 describe("crypto helpers", () => {
@@ -144,5 +165,97 @@ describe("auth service", () => {
     expect((await call("PATCH", "users", { password: "short" }, token, ron.id)).status).toBe(400);
     expect((await call("PATCH", "users", { password: "ron-pass-22" }, token, ron.id)).status).toBe(200);
     expect((await login("ron@example.test", "ron-pass-22")).out.status).toBe(200);
+  });
+
+  it("signs in a student from the learning system with the topics of their courses", async () => {
+    const { call, store } = setup();
+    const out = await call("POST", "sso", { token: launch() });
+    expect(out.status).toBe(200);
+    const body = out.body as { token: string; user: { email: string; arenas: string[]; source: string; role: string } };
+    expect(body.user).toMatchObject({ email: "noa@example.test", role: "trainee", source: "lms", arenas: ["כלכלה", "מקצועית א׳"] });
+    expect((await call("GET", "me", undefined, body.token)).status).toBe(200);
+    expect(store.doc.users[0].hash).toBe("");
+    // No password was ever set, so none signs in.
+    expect((await call("POST", "login", { email: "noa@example.test", password: "" })).status).toBe(400);
+    expect((await call("POST", "login", { email: "noa@example.test", password: "anything-1" })).status).toBe(401);
+  });
+
+  it("replaces the topics on every sign-in and keeps the same account", async () => {
+    const { call, store } = setup();
+    await call("POST", "sso", { token: launch() });
+    await call("POST", "sso", { token: launch({ courses: ["ביטוח רכוש"] }) });
+    expect(store.doc.users).toHaveLength(1);
+    expect(store.doc.users[0].arenas).toEqual(["ביטוח רכוש"]);
+    await call("POST", "sso", { token: launch({ staff: true }) });
+    expect(store.doc.users[0].arenas).toBeUndefined();
+  });
+
+  it("refuses a forged, expired or reused launch, and needs the secret", async () => {
+    const { call } = setup();
+    expect((await call("POST", "sso", { token: launch({}, "wrong-secret") })).status).toBe(401);
+    expect((await call("POST", "sso", { token: launch({ iat: Date.now() - 600_000, exp: Date.now() - 1 }) })).status).toBe(401);
+    expect((await call("POST", "sso", { token: launch({ exp: Date.now() + 3_600_000 }) })).status).toBe(401);
+    const once = launch();
+    expect((await call("POST", "sso", { token: once })).status).toBe(200);
+    expect((await call("POST", "sso", { token: once })).status).toBe(401);
+    const off = setup({ ...ENV, LMS_SSO_SECRET: "" });
+    expect((await off.call("POST", "sso", { token: launch() })).status).toBe(503);
+  });
+
+  it("answers a probe without making an account", async () => {
+    const { call, store } = setup();
+    expect((await call("POST", "sso", { token: launch(), probe: true })).status).toBe(200);
+    expect(store.doc.users).toHaveLength(0);
+  });
+
+  it("leaves a manager arriving from the learning system with every topic", async () => {
+    const { call, login, store } = setup();
+    await login("boss@example.test", "boss-seed-1");
+    await call("POST", "sso", { token: launch({ email: "boss@example.test" }) });
+    const boss = store.doc.users.find(u => u.email === "boss@example.test")!;
+    expect(boss.role).toBe("manager");
+    expect(boss.arenas).toBeUndefined();
+  });
+
+  it("lets a manager set and clear a user's topics", async () => {
+    const { call, login, store } = setup();
+    const { token } = await login("boss@example.test", "boss-seed-1");
+    await call("POST", "users", { name: "רון", email: "ron@example.test", password: "ron-pass-11", arenas: ["כלכלה"] }, token);
+    const ron = store.doc.users.find(u => u.email === "ron@example.test")!;
+    expect(ron.arenas).toEqual(["כלכלה"]);
+    await call("PATCH", "users", { arenas: ["חשבונאות", "חשבונאות"] }, token, ron.id);
+    expect(store.doc.users.find(u => u.id === ron.id)!.arenas).toEqual(["חשבונאות"]);
+    await call("PATCH", "users", { arenas: null }, token, ron.id);
+    expect(store.doc.users.find(u => u.id === ron.id)!.arenas).toBeUndefined();
+  });
+});
+
+describe("history service", () => {
+  it("keeps each user's sessions apart, newest first, replacing by id", async () => {
+    const { call, service } = setup();
+    const a = ((await call("POST", "sso", { token: launch() })).body as { token: string }).token;
+    const b = ((await call("POST", "sso", { token: launch({ email: "dan@example.test", sub: "lms-2" }) })).body as { token: string }).token;
+    const history = createHistoryService(memoryHistoryStore(), service.currentUser);
+    const session = (id: string, score: number) => ({
+      id,
+      arenaName: "כלכלה",
+      mode: "full",
+      questionIds: ["q1", "q2"],
+      answers: [{ questionId: "q1", selectedIndex: 2, isCorrect: true, timeSpent: 12 }],
+      startTime: "2026-11-26T10:00:00.000Z",
+      endTime: "2026-11-26T10:05:00.000Z",
+      score,
+    });
+    const post = (token: string, body: unknown) => history.handle({ method: "POST", body, authorization: `Bearer ${token}` });
+    const get = async (token: string) =>
+      ((await history.handle({ method: "GET", authorization: `Bearer ${token}` })).body as { sessions: { id: string; score: number }[] }).sessions;
+
+    expect((await post(a, { session: session("s1", 50) })).status).toBe(200);
+    expect((await post(a, { session: session("s2", 80) })).status).toBe(200);
+    expect((await post(a, { session: session("s1", 90) })).status).toBe(200);
+    expect((await get(a)).map(s => [s.id, s.score])).toEqual([["s1", 90], ["s2", 80]]);
+    expect(await get(b)).toEqual([]);
+    expect((await post(a, { session: { id: "" } })).status).toBe(400);
+    expect((await history.handle({ method: "GET" })).status).toBe(401);
   });
 });

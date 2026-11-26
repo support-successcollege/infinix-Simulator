@@ -104,6 +104,63 @@ interface ServerUser {
   role: UserRole;
   createdAt: string;
   mustChangePassword: boolean;
+  arenas?: string[];
+  source?: "lms";
+}
+
+// ── Practice history on the server ─────────────────────────────
+/**
+ * A finished session is kept on the server per user (api/history.ts),
+ * so it follows the student to any device. Stored compact: question
+ * ids rather than questions, which the bank already holds.
+ */
+const HISTORY_ENDPOINT = "/api/history";
+
+interface StoredSession {
+  id: string;
+  arenaName: string;
+  mode: string;
+  questionIds: string[];
+  answers: QuizAnswer[];
+  startTime: string;
+  endTime?: string;
+  score: number;
+}
+
+function toStored(s: QuizSession): StoredSession {
+  return {
+    id: s.id,
+    arenaName: s.arenaName,
+    mode: s.mode,
+    questionIds: s.questions.map(q => q.id),
+    answers: s.answers,
+    startTime: s.startTime,
+    endTime: s.endTime,
+    score: s.score,
+  };
+}
+
+function fromStored(s: StoredSession): QuizSession {
+  return {
+    id: s.id,
+    arenaName: s.arenaName,
+    mode: (s.mode as QuizSession["mode"]) || "full",
+    // Only ids are kept; screens that list past sessions need the count.
+    questions: s.questionIds.map(id => ({ id, text: "", options: [], correctIndex: 0, explanation: "", arena: s.arenaName })),
+    answers: s.answers,
+    startTime: s.startTime,
+    endTime: s.endTime,
+    score: s.score,
+    isDemo: false,
+  };
+}
+
+/** A topic name as the learning system and the bank may each spell it. */
+export function arenaKey(name: string): string {
+  return String(name || "")
+    .replace(/[\u05F3\u05F4'"`׳״]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 // ── Shared question bank ───────────────────────────────────────
@@ -206,6 +263,8 @@ interface AppContextValue {
   /** True while the signed-in user is still on the bootstrap password. */
   mustChangePassword: boolean;
   login: (email: string, password: string) => Promise<LoginResult>;
+  /** Sign in with a launch link from the learning system. */
+  loginWithLaunch: (launchToken: string) => Promise<LoginResult>;
   logout: () => void;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   updateUserProfile: (patch: Partial<Pick<User, "name" | "weeklyGoal">>) => void;
@@ -217,6 +276,7 @@ interface AppContextValue {
     role: UserRole;
   }) => Promise<void>;
   updateAuthUserRole: (userId: string, role: UserRole) => Promise<void>;
+  updateAuthUserArenas: (userId: string, arenas: string[] | null) => Promise<void>;
   resetAuthUserPassword: (userId: string, password: string) => Promise<void>;
   deleteAuthUser: (userId: string) => Promise<void>;
 
@@ -334,6 +394,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     writeJson(STORAGE_KEYS.trainingConfig, trainingConfig);
   }, [trainingConfig]);
 
+  // ── Practice history ─────────────────────────────────────────
+  // The server holds each user's history; it replaces whatever this
+  // browser had, which may belong to someone else who used it before.
+  const historyUserId = user?.id;
+  useEffect(() => {
+    if (!authToken || !historyUserId) return;
+    let cancelled = false;
+    fetch(HISTORY_ENDPOINT, { headers: { Authorization: `Bearer ${authToken}` } })
+      .then(res => (res.ok ? res.json() : null))
+      .then((data: { sessions?: StoredSession[] } | null) => {
+        if (cancelled || !data || !Array.isArray(data.sessions)) return;
+        setSessions(data.sessions.map(fromStored));
+      })
+      .catch(() => console.warn("[history] could not load history from the server"));
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, historyUserId]);
+
   // ── Session check ────────────────────────────────────────────
   // The stored user renders at once; the server then confirms the
   // token is still good (not expired, password not changed elsewhere,
@@ -347,12 +426,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       role: u.role,
       joinDate: u.createdAt || previous?.joinDate || new Date().toISOString(),
       weeklyGoal: previous?.id === u.id ? previous.weeklyGoal : 5,
+      ...(Array.isArray(u.arenas) ? { arenas: u.arenas } : {}),
+      ...(u.source ? { source: u.source } : {}),
     }),
     []
   );
 
+  // The token in use right now. The load-time check below must not act
+  // on an answer about a token that was replaced meanwhile, as when a
+  // sign-in from the learning system lands while the check is running.
+  const authTokenRef = useRef(authToken);
+  authTokenRef.current = authToken;
+
   useEffect(() => {
     let cancelled = false;
+    const checked = authToken;
+    const stale = () => cancelled || authTokenRef.current !== checked;
     // Accounts from the per-browser era are not carried over.
     removeKey(STORAGE_KEYS.authUsers);
     removeKey(STORAGE_KEYS.legacyAuthUsers);
@@ -365,12 +454,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     authFetch<{ user: ServerUser }>("me", { token: authToken })
       .then(({ user: fresh }) => {
-        if (cancelled) return;
+        if (stale()) return;
         setUser(prev => toUser(fresh, prev));
         setMustChangePassword(!!fresh.mustChangePassword);
       })
       .catch(err => {
-        if (cancelled) return;
+        if (stale()) return;
         // Offline or server trouble: keep the stored session. Rejected: sign out.
         if (err instanceof AuthHttpError && err.status !== 0 && err.status < 500) {
           setAuthToken("");
@@ -502,10 +591,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [realArenas]
   );
 
-  const arenas = useMemo(
-    () => (isDemoContent ? [] : realArenas),
-    [isDemoContent, realArenas]
-  );
+  // A student sees the topics of the courses they hold. Managers, and
+  // accounts with no topic list, see every topic.
+  const arenas = useMemo(() => {
+    if (isDemoContent) return [];
+    if (user?.role === "manager" || !Array.isArray(user?.arenas)) return realArenas;
+    const allowed = new Set(user!.arenas.map(arenaKey));
+    return realArenas.filter(a => allowed.has(arenaKey(a.name)));
+  }, [isDemoContent, realArenas, user]);
+
+  // A topic chosen earlier that this user may not practise is cleared,
+  // so the wizard does not show it as the current choice.
+  useEffect(() => {
+    if (!trainingConfig.arenaName || isDemoContent || !realArenas.length) return;
+    if (arenas.some(a => a.name === trainingConfig.arenaName)) return;
+    setTrainingConfigState(prev => ({ ...prev, arenaId: null, arenaName: "" }));
+  }, [arenas, isDemoContent, realArenas.length, trainingConfig.arenaName]);
 
   const weeklyProgress = useMemo(() => {
     const weekStart = startOfWeek().getTime();
@@ -533,9 +634,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [toUser]
   );
 
+  /** Sign in with a launch link from the learning system. */
+  const loginWithLaunch = useCallback(
+    async (launchToken: string): Promise<LoginResult> => {
+      try {
+        const { token, user: signedIn } = await authFetch<{ token: string; user: ServerUser }>("sso", {
+          method: "POST",
+          body: { token: launchToken },
+        });
+        setAuthToken(token);
+        setUser(prev => toUser(signedIn, prev?.id === signedIn.id ? prev : null));
+        setMustChangePassword(false);
+        setCurrentScreen("hub");
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: (err as Error).message || "הכניסה נכשלה" };
+      }
+    },
+    [toUser]
+  );
+
   const logout = useCallback(() => {
     setAuthToken("");
     setAuthUsers([]);
+    setSessions([]);
     setUser(null);
     setMustChangePassword(false);
     setCurrentSession(null);
@@ -578,7 +700,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     const { users } = await authFetch<{ users: ServerUser[] }>("users", { token: authToken });
-    setAuthUsers(users.map(({ id, name, email, role }) => ({ id, name, email, role })));
+    setAuthUsers(
+      users.map(({ id, name, email, role, arenas, source }) => ({
+        id,
+        name,
+        email,
+        role,
+        ...(Array.isArray(arenas) ? { arenas } : {}),
+        ...(source ? { source } : {}),
+      }))
+    );
   }, [authToken, user?.role]);
 
   useEffect(() => {
@@ -604,6 +735,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const updateAuthUserRole = useCallback(
     async (userId: string, role: UserRole) => {
       await authFetch("users", { method: "PATCH", token: authToken, id: userId, body: { role } });
+      await refreshAuthUsers();
+    },
+    [authToken, refreshAuthUsers]
+  );
+
+  /** Topics a user may practise; null opens every topic. */
+  const updateAuthUserArenas = useCallback(
+    async (userId: string, arenas: string[] | null) => {
+      await authFetch("users", { method: "PATCH", token: authToken, id: userId, body: { arenas } });
       await refreshAuthUsers();
     },
     [authToken, refreshAuthUsers]
@@ -801,7 +941,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ── Quiz flow ────────────────────────────────────────────────
 
   const startQuiz = useCallback((): { ok: boolean; error?: string } => {
-    const arena = arenas.find(a => a.id === trainingConfig.arenaId);
+    // Only a topic this user may practise: a choice saved earlier, by
+    // someone else on this browser or before access changed, is refused.
+    const arena =
+      arenas.find(a => a.id === trainingConfig.arenaId) ?? arenas.find(a => a.name === trainingConfig.arenaName);
+    if (!arena && !isDemoContent) return { ok: false, error: "בחרו נושא מהרשימה" };
     const arenaName = arena?.name || trainingConfig.arenaName || "כללי";
     const targetCount = Math.max(1, Math.min(30, trainingConfig.questionCount));
 
@@ -901,7 +1045,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setCurrentSession(finished);
     setSessions(prev => [finished, ...prev]);
     setCurrentScreen("results");
-  }, [currentSession, currentQuestionIndex]);
+    if (authToken && !finished.isDemo) {
+      fetch(HISTORY_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ session: toStored(finished) }),
+      }).catch(() => console.warn("[history] could not save the session to the server"));
+    }
+  }, [authToken, currentSession, currentQuestionIndex]);
 
   const resetSessions = useCallback(() => {
     setSessions([]);
@@ -922,12 +1073,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       authReady,
       mustChangePassword,
       login,
+      loginWithLaunch,
       logout,
       changePassword,
       updateUserProfile,
       authUsers: publicAuthUsers,
       createAuthUser,
       updateAuthUserRole,
+      updateAuthUserArenas,
       resetAuthUserPassword,
       deleteAuthUser,
       currentScreen,
@@ -972,12 +1125,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       authReady,
       mustChangePassword,
       login,
+      loginWithLaunch,
       logout,
       changePassword,
       updateUserProfile,
       publicAuthUsers,
       createAuthUser,
       updateAuthUserRole,
+      updateAuthUserArenas,
       resetAuthUserPassword,
       deleteAuthUser,
       currentScreen,

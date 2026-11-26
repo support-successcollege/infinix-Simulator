@@ -6,7 +6,8 @@ import { gunzipSync } from "node:zlib";
 import path from "node:path";
 import { defineConfig, loadEnv, type Plugin, type ViteDevServer } from "vite";
 import { createAuthService } from "./api/_lib/userAuth";
-import { fileStore } from "./api/_lib/userStores";
+import { fileHistoryStore, fileStore } from "./api/_lib/userStores";
+import { createHistoryService } from "./api/_lib/history";
 
 function normalizeBasePath(raw?: string): string {
   const value = (raw || "").trim();
@@ -149,6 +150,27 @@ function localAuthPlugin(env: Record<string, string>): Plugin {
           body,
           authorization: req.headers.authorization,
         });
+        res.statusCode = out.status;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify(out.body));
+      });
+
+      // Dev stand-in for `api/history.ts`, same service, files on disk.
+      server.middlewares.use("/api/history", async (req, res) => {
+        let raw = "";
+        for await (const chunk of req) raw += chunk;
+        let body: unknown = undefined;
+        try {
+          body = raw ? JSON.parse(raw) : undefined;
+        } catch {
+          body = undefined;
+        }
+        const auth = createAuthService(fileStore(filePath, secret), { ...env, AUTH_SECRET: secret });
+        const history = createHistoryService(
+          fileHistoryStore(path.resolve(import.meta.dirname, ".local-history"), secret),
+          auth.currentUser
+        );
+        const out = await history.handle({ method: req.method || "GET", body, authorization: req.headers.authorization });
         res.statusCode = out.status;
         res.setHeader("Content-Type", "application/json; charset=utf-8");
         res.end(JSON.stringify(out.body));

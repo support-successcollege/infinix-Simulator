@@ -96,6 +96,10 @@ export interface User {
   avatar?: string;
   joinDate: string;
   weeklyGoal: number;
+  /** Topics this user may practise; absent = every topic. */
+  arenas?: string[];
+  /** "lms": signs in from the learning system, has no password here. */
+  source?: "lms";
 }
 
 /** One recorded sitting in which a question appeared. */
@@ -182,4 +186,6 @@ export interface AuthUserAccount {
 
 /** The subset of an account that is safe to expose to the UI. */
 export type PublicAuthUser = Pick<AuthUserAccount, "id" | "name" | "email" | "role"> & {
+  arenas?: string[];
+  source?: "lms";
 };

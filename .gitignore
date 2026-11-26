@@ -114,6 +114,7 @@ temp/
 
 # Local user accounts (dev stand-in for the encrypted Blob document)
 .local-users.json
+.local-history/
 
 # Vercel
 .vercel

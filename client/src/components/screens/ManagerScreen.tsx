@@ -19,6 +19,7 @@ export default function ManagerScreen() {
     authUsers,
     createAuthUser,
     updateAuthUserRole,
+    updateAuthUserArenas,
     resetAuthUserPassword,
     deleteAuthUser,
   } = useApp();
@@ -209,8 +210,8 @@ export default function ManagerScreen() {
             >
               <ShieldAlert size={16} style={{ color: "var(--primary)", flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
               <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                המשתמשים נשמרים בשרת ועובדים מכל מחשב ומכל דפדפן. משתמש שנוסף כאן יכול
-                להתחבר מיד. היסטוריית התרגולים של כל משתמש נשמרת במכשיר שבו תרגל.
+                המשתמשים והיסטוריית התרגולים שלהם נשמרים בשרת ועובדים מכל מכשיר. סטודנט
+                שנכנס ממערכת הלימוד נפתח כאן אוטומטית, עם הזירות של הקורסים שלו.
               </p>
             </div>
 
@@ -225,7 +226,24 @@ export default function ManagerScreen() {
                   <div className="w-9 h-9 flex items-center justify-center text-sm flex-shrink-0" style={{ background: "var(--foreground)", color: "var(--background)", fontFamily: "var(--font-display)", fontWeight: 700 }}>{m.name.charAt(0)}</div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-bold" style={{ color: "var(--foreground)" }}>{m.name}</div>
-                    <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>{m.email} • {m.role === "manager" ? "מנהל" : "סטודנט"}</div>
+                    <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+                      {m.email} • {m.role === "manager" ? "מנהל" : "סטודנט"}
+                      {m.source === "lms" && " • נכנס ממערכת הלימוד"}
+                    </div>
+                    {m.role === "trainee" && (
+                      <MemberArenas
+                        member={m}
+                        allNames={Object.keys(questionBankData?.categories || {}).sort((a, b) => a.localeCompare(b, "he"))}
+                        onSave={async arenas => {
+                          try {
+                            await updateAuthUserArenas(m.id, arenas);
+                            toast.success("הזירות עודכנו");
+                          } catch (err) {
+                            toast.error((err as Error)?.message || "עדכון הזירות נכשל");
+                          }
+                        }}
+                      />
+                    )}
                   </div>
                   <select
                     className="tf-input !w-auto text-xs"
@@ -844,5 +862,65 @@ function PublishPanel() {
         )}
       </div>
     </section>
+  );
+}
+
+// ── A student's topics ────────────────────────────────────────
+
+function MemberArenas({ member, allNames, onSave }: {
+  member: { arenas?: string[]; source?: "lms" };
+  allNames: string[];
+  onSave: (arenas: string[] | null) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [all, setAll] = useState(!Array.isArray(member.arenas));
+  const [picked, setPicked] = useState<string[]>(member.arenas || []);
+  const summary = !Array.isArray(member.arenas)
+    ? "כל הזירות"
+    : member.arenas.length
+      ? member.arenas.join(", ")
+      : "אין זירות פתוחות";
+  // A student from the learning system gets their topics from it on
+  // every sign-in, so editing them here would not last.
+  const fromLms = member.source === "lms";
+
+  return (
+    <div className="text-xs mt-1" style={{ color: "var(--muted-foreground)" }}>
+      <span>זירות: {summary}</span>
+      {!fromLms && (
+        <button type="button" onClick={() => setOpen(o => !o)} className="font-bold underline ms-2" style={{ color: "var(--foreground)" }}>
+          {open ? "סגור" : "עריכה"}
+        </button>
+      )}
+      {fromLms && <span className="ms-1">(לפי הקורסים במערכת הלימוד)</span>}
+      {open && (
+        <div className="mt-2 p-2 rounded-lg flex flex-col gap-1" style={{ background: "var(--background)", border: "1px solid var(--tf-border)" }}>
+          <label className="flex items-center gap-2 font-bold" style={{ color: "var(--foreground)" }}>
+            <input type="checkbox" checked={all} onChange={e => setAll(e.target.checked)} />
+            כל הזירות
+          </label>
+          {!all && allNames.map(name => (
+            <label key={name} className="flex items-center gap-2" style={{ color: "var(--foreground)" }}>
+              <input
+                type="checkbox"
+                checked={picked.includes(name)}
+                onChange={e => setPicked(p => (e.target.checked ? [...p, name] : p.filter(x => x !== name)))}
+              />
+              {name}
+            </label>
+          ))}
+          <button
+            type="button"
+            className="btn-primary text-xs self-start mt-1"
+            onClick={async () => {
+              await onSave(all ? null : picked);
+              setOpen(false);
+            }}
+          >
+            שמור זירות
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

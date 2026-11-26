@@ -8,7 +8,7 @@
    forces a rotation before letting anyone into the app.
    ============================================================ */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useApp } from "@/contexts/AppContext";
 import { validatePasswordStrength } from "@/lib/auth";
@@ -18,9 +18,51 @@ import Wordmark from "@/components/Wordmark";
 
 type Stage = "credentials" | "rotate-password";
 
+/** The email a launch token is about. Unverified: only to recognise a replay. */
+function launchEmail(token: string): string {
+  try {
+    const body = token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/");
+    const json = new TextDecoder().decode(Uint8Array.from(atob(body), c => c.charCodeAt(0)));
+    return String(JSON.parse(json).email || "").trim().toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
 export default function AuthScreen() {
-  const { login, changePassword, authReady } = useApp();
+  const { login, loginWithLaunch, changePassword, authReady, user } = useApp();
   const [, setLocation] = useLocation();
+
+  // Arriving from the learning system: #/sso?t=<signed launch token>.
+  // The token rides in the fragment so it never reaches a server log.
+  const launchToken = useRef(
+    typeof window !== "undefined" && window.location.hash.startsWith("#/sso")
+      ? new URLSearchParams(window.location.hash.split("?")[1] || "").get("t") || ""
+      : ""
+  );
+  const [launching, setLaunching] = useState(!!launchToken.current);
+  useEffect(() => {
+    const token = launchToken.current;
+    if (!token) return;
+    launchToken.current = "";
+    window.history.replaceState(null, "", window.location.pathname + "#/");
+    loginWithLaunch(token).then(result => {
+      if (result.ok) {
+        setLocation("/app");
+        return;
+      }
+      // Back then forward in the browser replays a link already used. If
+      // this browser is already signed in as the same person, carry on.
+      if (user && user.email === launchEmail(token)) {
+        setLocation("/app");
+        return;
+      }
+      toast.error(result.error || "הכניסה ממערכת הלימוד נכשלה");
+      setLaunching(false);
+    });
+    // Runs once, for the token the page was opened with.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [stage, setStage] = useState<Stage>("credentials");
   const [email, setEmail] = useState("");
@@ -83,6 +125,17 @@ export default function AuthScreen() {
   };
 
   const submitDisabled = isLoading || !authReady;
+
+  if (launching) {
+    return (
+      <div className="app-shell flex items-center justify-center" style={{ direction: "rtl" }}>
+        <div className="flex flex-col items-center gap-4 text-center p-8" role="status" aria-live="polite">
+          <Wordmark size="lg" />
+          <p className="t-title">מתחברים דרך מערכת הלימוד…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell" style={{ direction: "rtl" }}>

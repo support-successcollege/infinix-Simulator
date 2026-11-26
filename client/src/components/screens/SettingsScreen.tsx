@@ -162,6 +162,17 @@ export default function SettingsScreen() {
           </div>
         </section>
 
+        {user?.source === "lms" ? (
+        <section>
+          <div className="section-head">
+            <span className="section-head-index">03</span>
+            <h3 className="section-head-title">כניסה</h3>
+          </div>
+          <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
+            נכנסים לסימולטור דרך מערכת הלימוד, בלי סיסמה נפרדת. הזירות שלך נפתחות לפי הקורסים שלך שם.
+          </p>
+        </section>
+        ) : (
         <section>
           <div className="section-head">
             <span className="section-head-index">03</span>
@@ -215,6 +226,7 @@ export default function SettingsScreen() {
             </div>
           </form>
         </section>
+        )}
 
         <section>
           <div className="section-head">

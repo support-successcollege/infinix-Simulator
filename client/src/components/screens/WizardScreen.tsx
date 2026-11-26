@@ -439,7 +439,11 @@ function Step2Arena({ arenas, allArenas, selectedId, search, setSearch, onSelect
         {arenas.length === 0 && (
           <div className="text-center py-12" style={{ color: "var(--muted-foreground)" }}>
             <Search size={32} className="mx-auto mb-3 opacity-40" />
-            <p>לא נמצאו נושאים תואמים</p>
+            <p>
+              {allArenas.length === 0
+                ? "עדיין לא נפתחו לך זירות תרגול. הזירות נפתחות לפי הקורסים שלך במערכת הלימוד, ואפשר לפנות למכללה."
+                : "לא נמצאו נושאים תואמים"}
+            </p>
           </div>
         )}
         </div>

@@ -4,9 +4,10 @@
      POST   ?action=login     { email, password }  -> { token, user }
      GET    ?action=me                             -> { user }
      POST   ?action=password  { currentPassword, newPassword }
+     POST   ?action=sso       { token, probe? }    learning-system sign-in
      GET    ?action=users                          manager: list
      POST   ?action=users     { name, email, password, role }
-     PATCH  ?action=users&id= { role?, name?, password? }
+     PATCH  ?action=users&id= { role?, name?, password?, arenas? }
      DELETE ?action=users&id=
 
    The logic lives in ./_lib/userAuth.ts; this file only adapts the
